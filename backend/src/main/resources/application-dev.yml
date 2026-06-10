@@ -1,0 +1,135 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/spring-projects/sts4/main/env/spring-boot-properties-schema.json
+# application-dev.yml
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        "[format_sql]": true
+        "[use_sql_comments]": true
+        "[generate_statistics]": false
+        session:
+          events:
+            log:
+              "[LOG_QUERIES_SLOWER_THAN_MS]": 500
+        jdbc:
+          "[batch_size]": 10
+        cache:
+          "[use_second_level_cache]": false
+          "[use_query_cache]": false
+
+  datasource:
+    hikari:
+      # Desabilita detecção de vazamento (ajuste conforme necessário)
+      leak-detection-threshold: 0
+
+  transaction:
+    # Defina como -1 para desativar o timeout ou um valor alto (ex: 3600 para 1 hora)
+    default-timeout: -1
+
+  devtools:
+    restart:
+      enabled: true
+      additional-paths: src/main/java
+    livereload:
+      enabled: true
+  thymeleaf:
+    cache: false
+
+# ============================================
+# ACTUATOR EM DEV - MODO COMPLETO
+# ============================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+        exclude: ""
+
+  # UNIFICADO: todas as configurações de endpoint em um único bloco
+  endpoint:
+    shutdown:
+      access: unrestricted
+    env:
+      access: unrestricted
+    beans:
+      access: unrestricted
+    heapdump:
+      access: unrestricted
+    threaddump:
+      access: unrestricted
+    configprops:
+      access: unrestricted
+    flyway:
+      access: unrestricted
+    liquibase:
+      access: unrestricted
+    scheduledtasks:
+      access: unrestricted
+    sessions:
+      access: unrestricted
+    metrics:
+      access: unrestricted
+    health:
+      show-details: always
+      show-components: always
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        step: 10s
+
+logging:
+  level:
+    # Principal do framework spring
+    "[org.springframework]": INFO
+
+    # Web/Security (opcional - pode ser verboso)
+    "[org.apache.catalina]": WARN
+    "[org.apache.coyote]": WARN
+    "[org.apache.tomcat]": WARN
+    "[org.springframework.web]": DEBUG
+    "[org.springframework.security]": DEBUG
+
+    "[org.springframework.boot.env]": DEBUG # Para debug do DotenvEnvironmentPostProcessor
+
+    # SQL e parâmetros
+    "[org.hibernate.SQL]": DEBUG
+    "[org.hibernate.orm.jdbc.bind]": TRACE
+    "[org.hibernate.orm.results]": WARN
+
+    # Transações
+    "[org.springframework.transaction]": DEBUG
+    "[org.springframework.orm.jpa]": DEBUG
+
+    # CORS e MVC (útil para debug de problemas de CORS ou roteamento)
+    "[org.springframework.web.cors]": DEBUG
+    "[org.springframework.web.servlet.handler]": DEBUG
+
+    # Pool de conexões
+    "[com.zaxxer.hikari]": WARN
+    "[com.zaxxer.hikari.pool]": WARN
+
+    # Flyway (útil para ver migrações)
+    #'[org.flywaydb]': DEBUG
+
+    # Actuator - logs (útil para debug)
+    #'[org.springframework.boot.actuate]': DEBUG
+    #'[io.micrometer]': DEBUG
+
+# CORS mais permissivo em dev
+cors:
+  debug: false
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  allowed-methods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+    - PATCH
+  allowed-headers: "*"
+  allow-credentials: true

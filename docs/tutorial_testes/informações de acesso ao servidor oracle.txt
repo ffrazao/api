@@ -1,0 +1,36 @@
+frazao@seagri1625813:~$ ssh -i ~/.ssh/id_oracle_cloud ubuntu@163.176.140.254
+Welcome to Ubuntu 24.04.4 LTS (GNU/Linux 6.17.0-1011-oracle x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Wed Jun  3 16:59:14 UTC 2026
+
+  System load:  0.01              Processes:             120
+  Usage of /:   4.5% of 44.07GB   Users logged in:       0
+  Memory usage: 24%               IPv4 address for ens3: 10.0.0.104
+  Swap usage:   0%
+
+Expanded Security Maintenance for Applications is not enabled.
+
+0 updates can be applied immediately.
+
+Enable ESM Apps to receive additional future security updates.
+See https://ubuntu.com/esm or run: sudo pro status
+
+
+The list of available updates is more than a week old.
+To check for new updates run: sudo apt update
+
+
+The programs included with the Ubuntu system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Ubuntu comes with ABSOLUTELY NO WARRANTY, to the extent permitted by
+applicable law.
+
+To run a command as administrator (user "root"), use "sudo <command>".
+See "man sudo_root" for details.
+

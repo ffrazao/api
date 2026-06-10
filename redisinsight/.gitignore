@@ -1,0 +1,9 @@
+# RedisInsight (dados locais)
+data/
+!data/.gitkeep
+
+# Logs
+*.log
+
+# MacOS lixo
+.DS_Store

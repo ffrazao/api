@@ -1,0 +1,213 @@
+/* Fundo com imagem agrícola */
+body {
+    background: url("../img/fundo.jpg") no-repeat center center fixed;
+    background-size: cover;
+    font-family: Arial, sans-serif;
+}
+
+/* Overlay escuro (CORRIGIDO) */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    pointer-events: none; /* 🔥 ISSO RESOLVE O BUG */
+    z-index: 0;
+}
+
+/* Fundo via div (mais confiável no Keycloak) */
+.seagri-bg {
+    position: fixed;
+    inset: 0;
+    background: url("../img/fundo.jpg") no-repeat center center;
+    background-size: cover;
+    z-index: -1;
+}
+
+/* Overlay */
+.seagri-bg::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+}
+
+/* Garante que o conteúdo fique acima */
+.login-pf-page {
+    position: relative;
+    z-index: 1;
+}
+
+/* Header com logo */
+.seagri-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.seagri-header .logo {
+    width: 120px;
+    margin-bottom: 10px;
+}
+
+.logo {
+    width: 120px;
+}
+
+.seagri-header h2 {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+/* Card */
+.seagri-login-card {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 400px;
+    margin: auto;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+}
+
+/* Inputs */
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    font-weight: bold;
+    color: #333;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+/* Botão */
+.form-actions button {
+    width: 100%;
+    padding: 12px;
+    background-color: #2e7d32;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.form-actions button:hover {
+    background-color: #1b5e20;
+}
+
+/* Links extras */
+.extra-links {
+    margin-top: 15px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.extra-links a {
+    font-size: 14px;
+    color: #2e7d32;
+    text-decoration: none;
+}
+
+/* Social login */
+.social-login {
+    margin-top: 25px;
+    text-align: center;
+}
+
+.social-btn {
+    display: block;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 6px;
+    background: #eeeeee;
+    text-decoration: none;
+    color: #333;
+}
+
+.social-btn:hover {
+    background: #dddddd;
+}
+
+.card-pf {
+    position: relative;
+    z-index: 2;
+}
+
+.alert-error {
+    background: #ffebee;
+    color: #c62828;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+
+/* Divider bonito */
+.divider {
+    display: flex;
+    align-items: center;
+    margin: 20px 0;
+}
+
+.divider span {
+    flex: 1;
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    position: relative;
+}
+
+.divider span::before,
+.divider span::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 40%;
+    height: 1px;
+    background: #ccc;
+}
+
+.divider span::before {
+    left: 0;
+}
+
+.divider span::after {
+    right: 0;
+}
+
+/* Botões sociais */
+.social-btn {
+    display: block;
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: bold;
+    text-align: center;
+}
+
+/* Google */
+.social-btn.google {
+    background: #ffffff;
+    border: 1px solid #ddd;
+    color: #444;
+}
+
+/* gov.br */
+.social-btn.govbr {
+    background: #1351b4;
+    color: white;
+}
+
+/* Preview (desabilitado) */
+.social-btn.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}

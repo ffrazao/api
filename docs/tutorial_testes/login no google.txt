@@ -1,0 +1,7 @@
+google login
+
+Client ID:
+COLOQUE_SEU_CLIENT_ID_AQUI
+
+Client Secret: 
+COLOQUE_SEU_CLIENT_SECRET_AQUI

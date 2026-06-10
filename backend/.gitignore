@@ -1,0 +1,37 @@
+# Gradle
+.gradle/
+build/
+out/
+bin/
+
+# Wrapper (garante que fique no repo)
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+.vscode/
+
+# Java
+*.class
+*.log
+hs_err_pid*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+*.env
+
+# Logs
+logs/
+
+# Temp
+*.swp
+*.swo
+*~

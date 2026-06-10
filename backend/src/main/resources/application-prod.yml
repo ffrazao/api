@@ -1,0 +1,201 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/spring-projects/sts4/main/env/spring-boot-properties-schema.json
+# application-prod.yml
+
+spring:
+  # Configurações de produção
+  jpa:
+    # Desabilita show-sql em produção (performance e segurança)
+    show-sql: false
+    hibernate:
+      ddl-auto: none # Mantém validate - NUNCA mudar!
+    properties:
+      hibernate:
+        # Desativa completamente qualquer tentativa de alteração automática
+        "[jakarta.persistence.schema-generation.database.action]": none
+        # Formatação desabilitada em produção (performance)
+        "[format_sql]": false
+        # Otimizações de batch MAIORES em produção
+        jdbc:
+          "[batch_size]": 50 # Maior que em dev
+          "[batch_versioned_data]": true
+        "[order_inserts]": true
+        "[order_updates]": true
+        # Pool de conexões do Hibernate (delegado para Hikari, então pode comentar)
+        # connection:
+        #   pool_size: 10
+
+        # Cache de segundo nível (se usar)
+        # cache:
+        #   "[use_second_level_cache]": true
+        #   "[use_query_cache]": true
+        #   region:
+        #     "[factory_class]": org.hibernate.cache.jcache.JCacheRegionFactory
+
+  # Pool de conexões - configuração mais agressiva em produção
+  datasource:
+    hikari:
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:20} # Maior que dev
+      minimum-idle: ${HIKARI_MIN_IDLE:5}
+      connection-timeout: ${HIKARI_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${HIKARI_IDLE_TIMEOUT:600000}
+      max-lifetime: ${HIKARI_MAX_LIFETIME:1800000}
+      leak-detection-threshold: ${HIKARI_LEAK_DETECTION:60000}
+      pool-name: Seagri-Prod-Pool
+      # Validação mais rigorosa
+      validation-timeout: 3000
+      connection-test-query: SELECT 1
+
+  # Flyway em produção - estratégia de migração segura
+  flyway:
+    enabled: true
+    baseline-on-migrate: false # false em produção!
+    baseline-version: 1 # Versão base conhecida
+    out-of-order: false # Não permitir migrações fora de ordem
+    validate-on-migrate: true
+    clean-disabled: true # NUNCA limpar banco em produção!
+
+  # Segurança rigorosa
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/corporativo}
+          jwk-set-uri: ${KC_JWK_SET_URI:http://iam:8080/realms/corporativo/protocol/openid-connect/certs}
+
+# Server - configurações de produção
+server:
+  # SSL obrigatório em produção
+  ssl:
+    # key-store: ${SSL_KEY_STORE:/etc/secrets/keystore.p12}
+    # key-store-password: ${SSL_KEY_PASSWORD}
+    # key-store-type: PKCS12
+    # key-alias: ${SSL_KEY_ALIAS:tomcat}
+    enabled: false
+    # Protocolos e ciphers seguros
+    # protocol: TLS
+    # enabled-protocols: TLSv1.3,TLSv1.2
+    # ciphers: TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+  # Configurações do Tomcat em produção
+  tomcat:
+    # Conexões
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:10000}
+    max-threads: ${TOMCAT_MAX_THREADS:200}
+    min-spare-threads: ${TOMCAT_MIN_SPARE:20}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:100}
+    connection-timeout: ${TOMCAT_CONNECTION_TIMEOUT:10000}
+
+    # Configurações de acesso
+    accesslog:
+      enabled: false
+      directory: /app/logs/access
+      pattern: combined
+      rotate: true
+      rename-on-rotate: true
+
+    # Compressão para reduzir banda
+    compression: on
+    compression-min-size: 1024
+    compressable-mime-types: text/html,text/xml,text/plain,text/css,application/javascript,application/json
+
+  # Headers de segurança
+  error:
+    whitelabel:
+      enabled: false # Não mostrar erros Spring
+    path: /error
+    include-stacktrace: never # NÃO incluir stacktrace em respostas
+
+  # HTTP/2 (se suportado)
+  http2:
+    enabled: true
+
+# ============================================
+# ACTUATOR EM PRODUÇÃO - MODO RESTRITO
+# ============================================
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8082}
+    address: ${MANAGEMENT_ADDRESS:127.0.0.1}
+    ssl:
+      enabled: false
+  endpoints:
+    web:
+      base-path: /manage
+      exposure:
+        include: health,info,metrics,prometheus
+        exclude: env,beans,heapdump,threaddump,shutdown,configprops,flyway
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: when-authorized
+      roles: ADMIN
+      probes:
+        enabled: true
+    info:
+      access: none
+    metrics:
+      access: none
+    prometheus:
+      access: none
+    env:
+      access: none
+    beans:
+      access: none
+    shutdown:
+      access: none
+    heapdump:
+      access: none
+    threaddump:
+      access: none
+    loggers:
+      access: none # Permite alterar logs em produção (com controle)
+      roles: ADMIN
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+        step: 1m
+    distribution:
+      percentiles-histogram:
+        "[http.server.requests]": true
+      slo:
+        "[http.server.requests]": 10ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s
+    tags:
+      application: ${spring.application.name}
+      environment: production
+    web:
+      server:
+        request:
+          autotime:
+            enabled: true
+            percentiles: 0.5, 0.9, 0.95, 0.99
+    jpa:
+      enabled: true
+    jdbc:
+      enabled: true
+
+# Logging em produção - estruturado e rotacionado
+# logging:
+#   file:
+#     name: ./logs/application.log
+#   level:
+#     ROOT: WARN
+
+#     # Sua aplicação
+#     "[br.gov.df.seagri]": INFO
+
+storage:
+  s3:
+    # Em produção, o Spring vai exigir que o servidor/Docker forneça essas variáveis
+    endpoint: ${S3_ENDPOINT}
+    bucket-biometria: ${S3_BUCKET}
+    access-key: ${S3_ADMIN_ACCESS_KEY}
+    secret-key: ${S3_ADMIN_ACCESS_KEY}
+
+cors:
+  # Mude para ler a variável de ambiente, com um fallback padrão
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,https://localhost:5173,http://localhost,https://localhost}
+  allowed-methods: GET,POST,PUT,DELETE,OPTIONS,PATCH
+  allowed-headers: "*"
+  allow-credentials: true
+  debug: true

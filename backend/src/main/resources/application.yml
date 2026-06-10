@@ -1,0 +1,284 @@
+spring:
+  application:
+    name: seagri-backend
+
+  profiles:
+    active: "${SPRING_PROFILES_ACTIVE:dev}"
+
+  output:
+    ansi:
+      enabled: ALWAYS
+
+  transaction:
+    default-timeout: 30 # Timeout padrão de transações (segundos)
+
+  # Timeouts de requisição
+  mvc:
+    async:
+      request-timeout: 30000 # 30 segundos
+
+  # Configuração de conexão com o banco de dados isolado do backend
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_URL:postgres}:5432/${BACKEND_BD:backend}
+    username: ${BACKEND_USU:backend}
+    password: ${BACKEND_SEN:backend}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: Seagri-Hikari-Pool
+      leak-detection-threshold: 60000 # Detecta conexões vazadas (60s)
+      validation-timeout: 5000
+      connection-test-query: SELECT 1
+
+  # O Flyway vai gerenciar as criações de tabelas automaticamente
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  # Configuração do JPA/Hibernate
+  jpa:
+    open-in-view: false
+    hibernate:
+      # NUNCA usar 'update' ou 'create' em produção. O Flyway é o dono do schema!
+      ddl-auto: validate
+      jdbc:
+        batch_size: 20
+        order_inserts: true
+        order_updates: true
+    show-sql: false # Mostra as consultas no console durante o dev
+    properties:
+      hibernate:
+        jdbc:
+          timezone: UTC
+          time_zone: UTC
+      org:
+        hibernate:
+          "[format_sql]": true
+          "[default_schema]": public # Explícito é melhor que implícito
+          connection:
+            characterEncoding: utf-8
+            useUnicode: true
+          jdbc:
+            lob:
+              "[non_contextual_creation]": true # Evita warning no PostgreSQL
+          envers:
+            audit_table_suffix: _aud
+            revision_field_name: rev
+            revision_type_field_name: revtype
+            store_data_at_delete: true
+
+            audit_strategy: org.hibernate.envers.strategy.ValidityAuditStrategy
+            audit_strategy_validity_end_rev_field_name: rev_end
+            audit_strategy_validity_store_revend_timestamp: true
+            audit_strategy_validity_revend_timestamp_field_name: revend_tstmp
+
+            # default_schema: auditoria
+    jackson:
+      timezone: UTC
+      time-zone: UTC
+
+  # Configuração de Segurança e Integração com o Keycloak (Resource Server)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # URL do emissor do Token. Valida criptograficamente os tokens gerados pelo Keycloak
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/corporativo}
+
+  cache:
+    type: redis
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis}
+      timeout: 2000
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${BACKEND_PORT:8081}
+  error:
+    whitelabel:
+      enabled: false
+    path: /error
+
+# ============================================
+# CONFIGURAÇÕES DO ACTUATOR
+# ============================================
+management:
+  # Endpoints expostos via HTTP
+  endpoints:
+    web:
+      # Caminho base para os endpoints do actuator
+      base-path: /actuator
+      exposure:
+        # Em dev será sobrescrito pelo application-dev.yml
+        include: health,info,metrics
+        exclude: env,beans
+      # CORS para o actuator (se necessário)
+      cors:
+        allowed-origins: "*"
+        allowed-methods: "GET,POST"
+
+  # Configurações específicas por endpoint
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+      # Inclui detalhes do disco e banco de dados
+      status:
+        http-mapping:
+          down: 503
+          out-of-service: 503
+    info:
+      access: unrestricted
+    metrics:
+      access: unrestricted
+      # Tags comuns para todas as métricas
+      tags:
+        application: ${spring.application.name}
+        environment: ${spring.profiles.active}
+    prometheus:
+      access: unrestricted
+    # Endpoints sensíveis desabilitados por padrão
+    shutdown:
+      access: unrestricted
+    env:
+      access: unrestricted
+    beans:
+      access: unrestricted
+    mappings:
+      access: unrestricted
+    loggers:
+      access: unrestricted
+
+  # Informações customizadas para o endpoint /info
+  info:
+    env:
+      enabled: true
+    build:
+      enabled: true
+    git:
+      enabled: true
+      mode: full
+
+  # Métricas específicas
+  metrics:
+    distribution:
+      percentiles-histogram:
+        "[http.server.requests]": true
+      slo:
+        "[http.server.requests]": 10ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s
+    tags:
+      application: ${spring.application.name}
+      environment: ${spring.profiles.active}
+    # Métricas de Web
+    web:
+      server:
+        request:
+          autotime:
+            enabled: true
+            percentiles: 0.5, 0.9, 0.95, 0.99
+    # Métricas de JPA
+    jpa:
+      enabled: true
+    # Métricas de JDBC
+    jdbc:
+      enabled: true
+    # Métricas de cache
+    cache:
+      enabled: true
+
+# ============================================
+# INFORMAÇÕES DA APLICAÇÃO (para o endpoint /info)
+# ============================================
+info:
+  app:
+    name: ${spring.application.name}
+    description: "SEAGRI - Sistema de Gestão Agropecuária"
+  #    version: @project.version@
+  #    java:
+  #      version: @java.version@
+  #    spring-boot:
+  #      version: @spring-boot.version@
+  #  build:
+  #    artifact: @project.artifactId@
+  #    name: @project.name@
+  #    version: @project.version@
+  #    group: @project.groupId@
+  #    time: @maven.build.timestamp@
+  contact:
+    email: seagri@df.gov.br
+    website: https://www.seagri.df.gov.br
+
+logging:
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd HH:mm:ss}){faint} %clr([%thread]){magenta} %clr(%-5level) %clr(%logger{36}){cyan} * %msg%n"
+    file: '{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%p","thread":"%t","logger":"%c","message":"%m"}%n'
+  file:
+    name: ${LOG_PATH:logs}/application.log
+    max-size: 100MB # Maior que dev
+    max-history: 30 # 30 dias de histórico
+    total-size-cap: 2GB
+  logback:
+    rollingpolicy:
+      max-history: 30
+      max-file-size: 100MB
+      total-size-cap: 2GB
+  level:
+    ROOT: INFO
+    # Sua aplicação
+    "[br.gov.df.seagri]": TRACE
+
+    # Web/Security (opcional - pode ser verboso)
+    "[org.apache.catalina]": WARN
+    "[org.apache.coyote]": WARN
+    "[org.apache.tomcat]": WARN
+    "[org.springframework.web]": DEBUG
+    "[org.springframework.security]": TRACE
+    "[org.springframework.security.oauth2]": TRACE
+
+    "[org.springframework.boot.env]": DEBUG # Para debug do DotenvEnvironmentPostProcessor
+
+    # SQL e parâmetros
+    "[org.hibernate.SQL]": DEBUG
+    "[org.hibernate.orm.jdbc.bind]": TRACE
+    "[org.hibernate.orm.results]": WARN
+
+    # Transações
+    "[org.springframework.transaction]": DEBUG
+    "[org.springframework.orm.jpa]": DEBUG
+
+    # CORS e MVC (útil para debug de problemas de CORS ou roteamento)
+    "[org.springframework.web.cors]": DEBUG
+    "[org.springframework.web.servlet.handler]": DEBUG
+
+armazenamento:
+  diretorio:
+    fotos: "#{systemProperties['user.home'] + '/seagri_fotos'}"
+
+# Configurações específicas para conexão com o SeaweedFS local (usando S3 API)
+storage:
+  s3:
+    endpoint: ${S3_ENDPOINT:http://localhost:8333}
+    bucket-biometria: ${S3_BUCKET:seagri-fotos}
+    access-key: ${S3_ADMIN_ACCESS_KEY:dev-access-key}
+    secret-key: ${S3_ADMIN_SECRET_KEY:dev-secret-key}
+
+biometria:
+  url: ${BIOMETRIA_URL:http://localhost:8000}
+
+cors:
+  allowed-origins: http://localhost:5173,http://frontend-web:5173
+  allowed-methods: GET,POST,PUT,DELETE,OPTIONS,PATCH
+  allowed-headers: "*"
+  allow-credentials: true
+  debug: true

@@ -1,0 +1,238 @@
+networks:
+  backend_net: # para isolar os serviços de backend
+    driver: bridge
+  frontend_net: # para isolar o frontend
+    driver: bridge
+
+services:
+  banco:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    container_name: banco_postgres
+    image: banco_postgres_img:latest
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/logs:/var/log/postgresql
+      - ./postgres/conf:/etc/postgresql-custom
+      - ./postgres/data:/var/lib/postgresql
+      - ./.env:/docker-entrypoint-initdb.d/.env:ro
+      - ./postgres/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    networks:
+      - backend_net
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    entrypoint: >
+      sh -c "
+      chown -R postgres:postgres /var/log/postgresql &&
+      chmod -R 755 /var/log/postgresql &&
+      exec docker-entrypoint.sh postgres
+      -c logging_collector=on
+      -c log_directory=/var/log/postgresql
+      -c log_filename=postgresql.log
+      -c log_file_mode=0666"
+
+  storage:
+    build:
+      context: ./seaweedfs
+      dockerfile: Dockerfile
+    container_name: storage_seaweedfs
+    image: storage_seaweedfs_img:latest
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "8333:8333" # S3 API
+      - "9333:9333" # Painel Master
+      - "8888:8888" # Filer API
+    volumes:
+      - ./seaweedfs/data:/data
+    networks:
+      - backend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f ${S3_FILER_API_ENDPOINT} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      banco:
+        condition: service_healthy
+
+  cache:
+    build:
+      context: ./redis
+      dockerfile: Dockerfile
+    container_name: cache_redis
+    image: cache_redis_img:latest
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis/data:/data
+      - ./redis/conf/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ./redis/logs:/var/log/redis
+    networks:
+      - backend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD}
+
+  cacheview:
+    image: redis/redisinsight:latest
+    container_name: redis_insight
+    ports:
+      - "5540:5540"
+    volumes:
+      - ./redisinsight/data:/data
+    networks:
+      - backend_net
+    restart: unless-stopped
+
+  biometria:
+    build:
+      context: ./facenet
+      dockerfile: Dockerfile
+      args:
+        BIOMETRIA_USUARIO: ${BIOMETRIA_USUARIO:-appbiometria}
+    container_name: biometria_facenet
+    image: biometria_facenet_img:latest
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./facenet/logs:/home/${BIOMETRIA_USUARIO:-appbiometria}/app/logs
+      - ./facenet/weights:/home/${BIOMETRIA_USUARIO:-appbiometria}/.deepface/weights
+    networks:
+      - backend_net
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf ${BIOMETRIA_URL:-http://localhost:8000}/health || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      storage:
+        condition: service_healthy
+
+  iam:
+    build:
+      context: ./keycloak
+      dockerfile: Dockerfile
+    container_name: iam_keycloak
+    image: iam_keycloak_img:latest
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/conf:/opt/keycloak/conf
+      - ./keycloak/logs:/opt/keycloak/logs
+      - ./keycloak/providers:/opt/keycloak/providers:ro
+      - ./keycloak/themes:/opt/keycloak/themes:ro
+    networks:
+      - frontend_net
+      - backend_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      banco:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend_spring_java
+    profiles:
+      - "completo"
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+    networks:
+      - frontend_net
+      - backend_net
+    restart: unless-stopped
+    depends_on:
+      banco:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+
+  frontend-web:
+    build:
+      context: ./frontend-web
+      dockerfile: Dockerfile
+    container_name: frontend_web_reactjs
+    image: frontend_web_img:latest
+    profiles:
+      - "completo"
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend-web:/app
+      - /app/node_modules
+    networks:
+      - frontend_net
+    restart: unless-stopped
+
+proxy:
+    build: 
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: proxy_nginx
+    profiles:
+      - "completo"
+    env_file:
+      - .env.docker
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/logs:/var/log/nginx
+      - ./nginx/certs:/etc/nginx/certs:ro # Certificados mapeados como somente leitura
+    networks:
+      - frontend_net
+      - backend_net
+    depends_on:
+      - backend
+      - frontend-web
+    restart: unless-stopped

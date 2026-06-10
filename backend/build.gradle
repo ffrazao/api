@@ -1,0 +1,99 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.14'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'br.gov.df.seagri'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Web (Para criar as APIs REST)
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Segurança e OAuth2/JWT (Para integração com o Keycloak)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+
+    // Validação de DTOs (Jakarta Validation - @Valid, @NotNull)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // JPA e Banco de Dados
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'org.postgresql:postgresql' // Driver do Postgres
+    implementation 'org.hibernate.orm:hibernate-envers'
+    implementation 'org.springframework.data:spring-data-envers'
+    // segundo Envers a importação a seguir é para estruturas complexas, vou desabilitar
+    // por enquanto, depois estudar e ver se tem algum proveito
+    // implementation 'com.vladmihalcea:hibernate-types-60:2.21.1'
+    implementation 'org.hibernate.orm:hibernate-spatial'
+    implementation 'org.locationtech.jts:jts-core'
+
+    // Migrações de Banco de Dados
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // Actuator para monitoramento
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Micrometer para métricas avançadas (opcional)
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.micrometer:micrometer-registry-prometheus' // Para Prometheus
+
+    // Ferramentas de Produtividade (Lombok e DevTools)
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    implementation 'io.github.cdimascio:dotenv-java:3.2.0' // para subir variáveis de ambiente a partir de um arquivo .env
+
+    // MapStruct para mapeamento automático de DTOs
+    implementation 'org.mapstruct:mapstruct:1.6.3'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0' // Integra Lombok e MapStruct
+
+    // Testes
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testAnnotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+
+    // Cliente S3 (AWS SDK V2) para comunicação com o SeaweedFS
+    implementation platform('software.amazon.awssdk:bom:2.25.11')
+    implementation 'software.amazon.awssdk:s3'
+
+    // Cache (Spring)
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // Caffeine
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile) {
+    options.generatedSourceOutputDirectory = file("$buildDir/generated/sources/annotationProcessor/java/main")
+}
+
+bootRun {
+    jvmArgs = [
+        "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+    ]
+}

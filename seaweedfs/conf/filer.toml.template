@@ -1,0 +1,13 @@
+# Desativa o banco local embutido
+[leveldb2]
+enabled = false
+
+# Usa o nome correto do driver: postgres
+[postgres]
+enabled = true
+hostname = "${POSTGRES_URL}"
+port = 5432
+username = "${S3_USU}"
+password = "${S3_SEN}"
+database = "${S3_BD}"
+sslmode = "disable"
