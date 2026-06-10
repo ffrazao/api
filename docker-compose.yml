@@ -4,6 +4,14 @@ networks:
   frontend_net: # para isolar o frontend
     driver: bridge
 
+volumes:
+  redis_data:
+    driver: local
+  redisinsight_data:
+    driver: local
+  biometria_logs:
+    driver: local
+
 services:
   banco:
     build:
@@ -83,7 +91,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./redis/data:/data
+      - redis_data:/data
       - ./redis/conf/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - ./redis/logs:/var/log/redis
     networks:
@@ -99,12 +107,14 @@ services:
       --requirepass ${REDIS_PASSWORD}
 
   cacheview:
-    image: redis/redisinsight:latest
+    build:
+      context: ./redisinsight
+      dockerfile: Dockerfile
     container_name: redis_insight
     ports:
       - "5540:5540"
     volumes:
-      - ./redisinsight/data:/data
+      - redisinsight_data:/data
     networks:
       - backend_net
     restart: unless-stopped
@@ -123,7 +133,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./facenet/logs:/home/${BIOMETRIA_USUARIO:-appbiometria}/app/logs
+      - biometria_logs:/home/${BIOMETRIA_USUARIO:-appbiometria}/app/logs
       - ./facenet/weights:/home/${BIOMETRIA_USUARIO:-appbiometria}/.deepface/weights
     networks:
       - backend_net
@@ -214,7 +224,7 @@ services:
       - frontend_net
     restart: unless-stopped
 
-proxy:
+  proxy:
     build: 
       context: ./nginx
       dockerfile: Dockerfile
@@ -228,7 +238,7 @@ proxy:
       - "443:443"
     volumes:
       - ./nginx/logs:/var/log/nginx
-      - ./nginx/certs:/etc/nginx/certs:ro # Certificados mapeados como somente leitura
+      - ./nginx/certs:/etc/nginx/certs:ro
     networks:
       - frontend_net
       - backend_net

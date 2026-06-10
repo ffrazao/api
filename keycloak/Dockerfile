@@ -14,9 +14,9 @@ COPY --from=builder /usr/bin/envsubst /usr/local/bin/envsubst
 COPY --from=builder /usr/lib64/libintl.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libunistring.so* /usr/lib64/
 
-# Prepara os diretórios de dados e importação com as permissões corretas
-RUN mkdir -p /opt/keycloak/data/import && \
-    chown -R keycloak:keycloak /opt/keycloak/data
+# Prepara os diretórios de dados, importação e logs com as permissões corretas
+RUN mkdir -p /opt/keycloak/data/import /opt/keycloak/logs && \
+    chown -R keycloak:keycloak /opt/keycloak/data /opt/keycloak/logs
 
 WORKDIR /opt/keycloak
 
@@ -29,7 +29,8 @@ COPY entrypoint.sh /opt/keycloak/bin/entrypoint.sh
 # Ajusta permissões e garante que o usuário keycloak seja o dono de tudo
 RUN chmod +x /opt/keycloak/bin/entrypoint.sh && \
     chown keycloak:keycloak /opt/keycloak/bin/entrypoint.sh && \
-    chown -R keycloak:keycloak /opt/keycloak/data/import
+    chown -R keycloak:keycloak /opt/keycloak/data/import && \
+    chown -R keycloak:keycloak /opt/keycloak/logs
 
 # Retorna para o usuário sem privilégios (Segurança de Runtime)
 USER keycloak

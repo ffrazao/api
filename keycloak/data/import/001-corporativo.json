@@ -148,7 +148,7 @@
         {
           "type": "password",
           "value": "${ABC_SEN}",
-          "temporary": true
+          "temporary": false
         }
       ]
     }

@@ -37,5 +37,7 @@ USER ${BIOMETRIA_USUARIO:-appbiometria}
 # Expõe a porta do FastAPI
 EXPOSE 8000
 
+RUN mkdir -p /home/appbio/app/logs && chmod -R 777 /home/appbio/app/logs
+
 # Inicia o servidor
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
