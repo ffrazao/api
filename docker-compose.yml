@@ -12,11 +12,18 @@ volumes:
   biometria_logs:
     driver: local
 
+x-logging: &x-logging
+  driver: "json-file"
+  options:
+    max-size: "1g"   # Limita cada arquivo de log a 1GB
+    max-file: "3"
+
 services:
   banco:
     build:
       context: ./postgres
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: banco_postgres
     image: banco_postgres_img:latest
     env_file:
@@ -39,9 +46,11 @@ services:
           "CMD-SHELL",
           "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}",
         ]
-      interval: 10s
+      interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    stop_grace_period: 30s
     entrypoint: >
       sh -c "
       chown -R postgres:postgres /var/log/postgresql &&
@@ -56,6 +65,7 @@ services:
     build:
       context: ./seaweedfs
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: storage_seaweedfs
     image: storage_seaweedfs_img:latest
     env_file:
@@ -71,10 +81,16 @@ services:
       - backend_net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f ${S3_FILER_API_ENDPOINT} || exit 1"]
-      interval: 10s
+      test:
+        [
+          "CMD-SHELL", 
+          "curl -k -f --connect-timeout 3 ${S3_FILER_API_ENDPOINT} || exit 1"
+        ]
+      interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 20s
+    stop_grace_period: 30s
     depends_on:
       banco:
         condition: service_healthy
@@ -83,6 +99,7 @@ services:
     build:
       context: ./redis
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: cache_redis
     image: cache_redis_img:latest
     env_file:
@@ -100,8 +117,10 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 5
+      start_period: 10s
+    stop_grace_period: 30s
     command: >
       redis-server /usr/local/etc/redis/redis.conf
       --requirepass ${REDIS_PASSWORD}
@@ -110,6 +129,7 @@ services:
     build:
       context: ./redisinsight
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: redis_insight
     ports:
       - "5540:5540"
@@ -125,7 +145,13 @@ services:
       dockerfile: Dockerfile
       args:
         BIOMETRIA_USUARIO: ${BIOMETRIA_USUARIO:-appbiometria}
+    logging: *x-logging
     container_name: biometria_facenet
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
     image: biometria_facenet_img:latest
     env_file:
       - .env
@@ -145,8 +171,10 @@ services:
           "curl -sf ${BIOMETRIA_URL:-http://localhost:8000}/health || exit 1",
         ]
       interval: 15s
-      timeout: 10s
+      timeout: 5s
       retries: 5
+      start_period: 40s
+    stop_grace_period: 30s
     depends_on:
       storage:
         condition: service_healthy
@@ -155,7 +183,13 @@ services:
     build:
       context: ./keycloak
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: iam_keycloak
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3G
     image: iam_keycloak_img:latest
     env_file:
       - .env
@@ -172,10 +206,15 @@ services:
       - backend_net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test:
+        [
+          "CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"
+        ]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    stop_grace_period: 30s
     depends_on:
       banco:
         condition: service_healthy
@@ -184,6 +223,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: backend_spring_java
     profiles:
       - "completo"
@@ -203,11 +243,19 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
+      iam:
+        condition: service_healthy
+      biometria:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    stop_grace_period: 30s
 
   frontend-web:
     build:
       context: ./frontend-web
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: frontend_web_reactjs
     image: frontend_web_img:latest
     profiles:
@@ -222,12 +270,17 @@ services:
       - /app/node_modules
     networks:
       - frontend_net
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 30s
 
   proxy:
     build: 
       context: ./nginx
       dockerfile: Dockerfile
+    logging: *x-logging
     container_name: proxy_nginx
     profiles:
       - "completo"
@@ -243,6 +296,27 @@ services:
       - frontend_net
       - backend_net
     depends_on:
-      - backend
-      - frontend-web
+      frontend-web:
+        condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 30s
+
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    logging: *x-logging
+    container_name: sidecar_backup
+    env_file:
+      - .env
+      - .env.docker
+    volumes:
+      - ../../backups-app:/app/backups
+      - ./seaweedfs/data:/data_storage:ro
+    networks:
+      - backend_net
+    depends_on:
+      banco:
+        condition: service_healthy
+      storage:
+        condition: service_healthy

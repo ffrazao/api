@@ -7,6 +7,17 @@ import numpy as np
 from deepface import DeepFace
 import cv2
 import os
+from starlette.concurrency import run_in_threadpool
+import json
+
+# ---------------------------------------------------------------------------
+# Configuração de Log e Filtro (sem poluir o terminal com /health)
+# ---------------------------------------------------------------------------
+class NoHealthCheckFilter(logging.Filter):
+    def filter(self, record):
+        return 'GET /health' not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(NoHealthCheckFilter())
 
 # ---------------------------------------------------------------------------
 # Configuração do modelo
@@ -76,12 +87,12 @@ class CompareTemplatesRequest(BaseModel):
     template_1: list[float]
     template_2: list[float]
 
-class CompareTemplateFileRequest(BaseModel):
-    """Vetor já extraído enviado junto com um arquivo de imagem."""
-    template_1: list[float]
+# class CompareTemplateFileRequest(BaseModel):
+#     """Vetor já extraído enviado junto com um arquivo de imagem."""
+#     template_1: list[float]
 
 # ---------------------------------------------------------------------------
-# Funções auxiliares internas (não são endpoints — sem acoplamento ao FastAPI)
+# Funções auxiliares internas síncronas (não são endpoints — sem acoplamento ao FastAPI)
 # ---------------------------------------------------------------------------
 def _bytes_to_cv2(raw_bytes: bytes) -> np.ndarray:
     """Converte bytes brutos em imagem OpenCV."""
@@ -147,8 +158,9 @@ async def extract_template(image: UploadFile = File(...)):
     logger.info("Requisição recebida: /api/v1/biometria/extract")
 
     try:
-        img = _bytes_to_cv2(await image.read())
-        embedding = _extract_embedding(img)
+        content = await image.read()
+        img = await run_in_threadpool(_bytes_to_cv2, content)
+        embedding = await run_in_threadpool(_extract_embedding, img)
         logger.info("Template facial extraído com sucesso")
         return {"status": "success", "template_vector": embedding}
 
@@ -167,19 +179,21 @@ async def extract_template(image: UploadFile = File(...)):
 @app.post("/api/v1/biometria/compare_file")
 async def compare_file(
     image_1: UploadFile = File(...),
-    image_2: UploadFile = File(...),
-):
+    image_2: UploadFile = File(...)):
     """Recebe dois arquivos de imagem e devolve o score de similaridade."""
     logger.info("Requisição recebida: /api/v1/biometria/compare_file")
 
     try:
-        img1 = _bytes_to_cv2(await image_1.read())
-        img2 = _bytes_to_cv2(await image_2.read())
+        c1 = await image_1.read()
+        c2 = await image_2.read()
+        
+        img1 = await run_in_threadpool(_bytes_to_cv2, c1)
+        img2 = await run_in_threadpool(_bytes_to_cv2, c2)
 
-        emb1 = _extract_embedding(img1)
-        emb2 = _extract_embedding(img2)
+        emb1 = await run_in_threadpool(_extract_embedding, img1)
+        emb2 = await run_in_threadpool(_extract_embedding, img2)
 
-        return _cosine_similarity(emb1, emb2)
+        return await run_in_threadpool(_cosine_similarity, emb1, emb2)
 
     except HTTPException:
         raise
@@ -213,16 +227,16 @@ async def compare_template(
     """Recebe um vetor biométrico já extraído e um arquivo de imagem e devolve o score."""
     logger.info("Requisição recebida: /api/v1/biometria/compare_template")
 
-    import json
     try:
         emb1 = json.loads(template_1)
         if not isinstance(emb1, list):
             raise HTTPException(status_code=400, detail="template_1 deve ser uma lista JSON de floats")
 
-        img2 = _bytes_to_cv2(await image_2.read())
-        emb2 = _extract_embedding(img2)
+        c2 = await image_2.read()
+        img2 = await run_in_threadpool(_bytes_to_cv2, c2)
+        emb2 = await run_in_threadpool(_extract_embedding, img2)
 
-        return _cosine_similarity(emb1, emb2)
+        return await run_in_threadpool(_cosine_similarity, emb1, emb2)
 
     except HTTPException:
         raise
@@ -254,7 +268,7 @@ async def compare(body: CompareTemplatesRequest):
     logger.info("Requisição recebida: /api/v1/biometria/compare")
 
     try:
-        return _cosine_similarity(body.template_1, body.template_2)
+        return await run_in_threadpool(_cosine_similarity, body.template_1, body.template_2)
 
     except Exception as e:
         logger.exception(f"Erro técnico na comparação de vetores: {e}")
