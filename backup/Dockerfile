@@ -1,6 +1,6 @@
 FROM alpine:3.18
 
-RUN apk add --no-cache aws-cli tzdata bash tar postgresql15-client
+RUN apk add --no-cache aws-cli tzdata bash tar postgresql-client
 
 WORKDIR /app
 

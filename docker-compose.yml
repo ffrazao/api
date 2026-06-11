@@ -212,8 +212,8 @@ services:
         ]
       interval: 20s
       timeout: 10s
-      retries: 10
-      start_period: 60s
+      retries: 15
+      start_period: 90s
     stop_grace_period: 30s
     depends_on:
       banco:
@@ -311,7 +311,7 @@ services:
       - .env
       - .env.docker
     volumes:
-      - ../../backups-app:/app/backups
+      - ../backups-app:/app/backups
       - ./seaweedfs/data:/data_storage:ro
     networks:
       - backend_net
