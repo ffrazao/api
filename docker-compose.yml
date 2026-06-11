@@ -161,6 +161,7 @@ services:
     volumes:
       - biometria_logs:/home/${BIOMETRIA_USUARIO:-appbiometria}/app/logs
       - ./facenet/weights:/home/${BIOMETRIA_USUARIO:-appbiometria}/.deepface/weights
+      - ./facenet:/home/${BIOMETRIA_USUARIO:-appbiometria}/app
     networks:
       - backend_net
     restart: unless-stopped
