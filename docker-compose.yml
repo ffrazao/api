@@ -15,7 +15,7 @@ volumes:
 x-logging: &x-logging
   driver: "json-file"
   options:
-    max-size: "1g"   # Limita cada arquivo de log a 1GB
+    max-size: "1g" # Limita cada arquivo de log a 1GB
     max-file: "3"
 
 services:
@@ -83,8 +83,8 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL", 
-          "curl -k -f --connect-timeout 3 ${S3_FILER_API_ENDPOINT} || exit 1"
+          "CMD-SHELL",
+          "curl -k -f --connect-timeout 3 ${S3_FILER_API_ENDPOINT} || exit 1",
         ]
       interval: 15s
       timeout: 5s
@@ -150,7 +150,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
+          cpus: "1.5"
           memory: 2G
     image: biometria_facenet_img:latest
     env_file:
@@ -189,7 +189,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 3G
     image: iam_keycloak_img:latest
     env_file:
@@ -205,16 +205,19 @@ services:
     networks:
       - frontend_net
       - backend_net
+    extra_hosts:
+      - "governo.gdfnet.df:10.194.250.114"
     restart: unless-stopped
     healthcheck:
       test:
         [
-          "CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK'",
         ]
       interval: 20s
       timeout: 10s
       retries: 15
-      start_period: 90s
+      start_period: 60s
     stop_grace_period: 30s
     depends_on:
       banco:
@@ -250,6 +253,16 @@ services:
         condition: service_healthy
       cache:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://localhost:8081/api/v1/public/ping > /dev/null || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     stop_grace_period: 30s
 
   frontend-web:
@@ -275,10 +288,17 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     stop_grace_period: 30s
 
   proxy:
-    build: 
+    build:
       context: ./nginx
       dockerfile: Dockerfile
     logging: *x-logging

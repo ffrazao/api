@@ -41,4 +41,4 @@ EXPOSE 8080
 ENTRYPOINT ["/opt/keycloak/bin/entrypoint.sh", "/opt/keycloak/data/import"]
 
 # Argumentos passados para o exec "$@" dentro do entrypoint.sh
-CMD ["/opt/keycloak/bin/kc.sh", "start-dev", "--http-enabled=true", "--import-realm"]
+CMD ["/opt/keycloak/bin/kc.sh", "start-dev", "--import-realm"]

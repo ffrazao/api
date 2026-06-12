@@ -3,61 +3,59 @@
   "enabled": true,
   "loginTheme": "ppp_agricultura",
   "internationalizationEnabled": true,
-  "supportedLocales": [
-    "pt-BR"
-  ],
+  "supportedLocales": ["pt-BR"],
   "defaultLocale": "pt-BR",
   "components": {
-      "org.keycloak.storage.UserStorageProvider": [
-        {
-          "name": "ldap-gdf-corporativo",
-          "providerId": "ldap",
-          "subComponents": {
-            "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
-              {
-                "name": "username",
-                "providerId": "user-attribute-ldap-mapper",
-                "config": {
-                  "ldap.attribute": ["sAMAccountName"],
-                  "is.mandatory.in.ldap": ["true"],
-                  "always.read.from.ldap": ["false"],
-                  "user.model.attribute": ["username"],
-                  "read.only": ["true"]
-                }
-              },
-              {
-                "name": "email",
-                "providerId": "user-attribute-ldap-mapper",
-                "config": {
-                  "ldap.attribute": ["mail"],
-                  "is.mandatory.in.ldap": ["false"],
-                  "always.read.from.ldap": ["false"],
-                  "user.model.attribute": ["email"],
-                  "read.only": ["true"]
-                }
+    "org.keycloak.storage.UserStorageProvider": [
+      {
+        "name": "ldap-gdf-corporativo",
+        "providerId": "ldap",
+        "subComponents": {
+          "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
+            {
+              "name": "username",
+              "providerId": "user-attribute-ldap-mapper",
+              "config": {
+                "ldap.attribute": ["sAMAccountName"],
+                "is.mandatory.in.ldap": ["true"],
+                "always.read.from.ldap": ["false"],
+                "user.model.attribute": ["username"],
+                "read.only": ["true"]
               }
-            ]
-          },
-          "config": {
-            "enabled": ["true"],
-            "vendor": ["ad"],
-            "connectionUrl": ["${LDAP_URL}"],
-            "usersDn": ["OU=UNIDADES,DC=governo,DC=gdfnet,DC=df"],
-            "bindDn": ["${LDAP_BIND_DN}"],
-            "bindCredential": ["${LDAP_BIND_PASSWORD}"],
-            "usernameLDAPAttribute": ["sAMAccountName"],
-            "userObjectClasses": ["user, organizationalPerson"],
-            "rdnLDAPAttribute": ["cn"],
-            "uuidLDAPAttribute": ["objectGUID"],
-            "importEnabled": ["false"],
-            "editMode": ["READ_ONLY"],
-            "searchScope": ["2"], 
-            "authType": ["simple"],
-            "useTruststoreSpi": ["never"]
-          }
+            },
+            {
+              "name": "email",
+              "providerId": "user-attribute-ldap-mapper",
+              "config": {
+                "ldap.attribute": ["mail"],
+                "is.mandatory.in.ldap": ["false"],
+                "always.read.from.ldap": ["false"],
+                "user.model.attribute": ["email"],
+                "read.only": ["true"]
+              }
+            }
+          ]
+        },
+        "config": {
+          "enabled": ["true"],
+          "vendor": ["ad"],
+          "connectionUrl": ["${LDAP_URL}"],
+          "usersDn": ["OU=UNIDADES,DC=governo,DC=gdfnet,DC=df"],
+          "bindDn": ["${LDAP_BIND_DN}"],
+          "bindCredential": ["${LDAP_BIND_PASSWORD}"],
+          "usernameLDAPAttribute": ["sAMAccountName"],
+          "userObjectClasses": ["user, organizationalPerson"],
+          "rdnLDAPAttribute": ["cn"],
+          "uuidLDAPAttribute": ["objectGUID"],
+          "importEnabled": ["false"],
+          "editMode": ["READ_ONLY"],
+          "searchScope": ["2"],
+          "authType": ["simple"],
+          "useTruststoreSpi": ["ldaps"]
         }
-      ]
-    },
+      }
+    ]
+  },
   "identityProviders": [
     {
       "alias": "google",
@@ -88,12 +86,8 @@
       "enabled": true,
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
-      "redirectUris": [
-        "${APP_URL}/*"
-      ],
-      "webOrigins": [
-        "${APP_URL}"
-      ],
+      "redirectUris": ["${APP_URL}/*"],
+      "webOrigins": ["${APP_URL}"],
       "notBefore": 0,
       "bearerOnly": false,
       "consentRequired": false,
