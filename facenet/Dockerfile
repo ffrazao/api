@@ -23,7 +23,9 @@ RUN chown -R ${BIOMETRIA_USUARIO:-appbiometria}:${BIOMETRIA_USUARIO:-appbiometri
 # Prepara o ambiente de trabalho e instala as dependências do Python
 WORKDIR ${APP_HOME}/app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY constraints.txt .
+RUN pip install --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 # Garante que o diretório da aplicação (incluindo logs) pertença ao usuário correto
 RUN chown -R ${BIOMETRIA_USUARIO:-appbiometria}:${BIOMETRIA_USUARIO:-appbiometria} ${APP_HOME}/app
