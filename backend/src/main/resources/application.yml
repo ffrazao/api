@@ -82,12 +82,12 @@ spring:
       time-zone: UTC
 
   # Configuração de Segurança e Integração com o Keycloak (Resource Server)
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          # URL do emissor do Token. Valida criptograficamente os tokens gerados pelo Keycloak
-          issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/corporativo}
+  #security:
+  #oauth2:
+  #resourceserver:
+  #jwt:
+  # URL do emissor do Token. Valida criptograficamente os tokens gerados pelo Keycloak
+  #issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/corporativo}
 
   cache:
     type: redis
