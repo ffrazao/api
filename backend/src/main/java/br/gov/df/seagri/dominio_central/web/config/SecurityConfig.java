@@ -7,7 +7,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import br.gov.df.seagri.dominio_central.web.config.seguranca.CustomAccessDeniedHandler;
 import br.gov.df.seagri.dominio_central.web.config.seguranca.CustomAuthenticationEntryPoint;
 import br.gov.df.seagri.dominio_central.web.config.seguranca.CustomJwtAuthenticationConverter;
@@ -22,6 +24,10 @@ public class SecurityConfig {
     private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
     private final CustomAccessDeniedHandler customAccessDeniedHandler;
 
+    // Injeta a URI das chaves vinda do seu .env.docker
+    @Value("${KC_JWK_SET_URI}")
+    private String jwkSetUri;
+
     // Injeção via construtor
     public SecurityConfig(CustomJwtAuthenticationConverter customJwtAuthenticationConverter,
             CustomAuthenticationEntryPoint customAuthenticationEntryPoint,
@@ -29,6 +35,12 @@ public class SecurityConfig {
         this.customJwtAuthenticationConverter = customJwtAuthenticationConverter;
         this.customAuthenticationEntryPoint = customAuthenticationEntryPoint;
         this.customAccessDeniedHandler = customAccessDeniedHandler;
+    }
+
+    // Bean manual para decodificar JWT sem validar o issuer via .well-known
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        return NimbusJwtDecoder.withJwkSetUri(this.jwkSetUri).build();
     }
 
     @Bean
@@ -55,7 +67,7 @@ public class SecurityConfig {
                 // Configura a aplicação como um Resource Server que aceita JWT do Keycloak
                 .oauth2ResourceServer(oauth2 -> oauth2
                         // AQUI ESTÁ O SEGREDO: Plugando o conversor de identidade!
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(customJwtAuthenticationConverter))
+                        .jwt(jwt -> jwt.decoder(jwtDecoder()).jwtAuthenticationConverter(customJwtAuthenticationConverter))
                         // PLUGANDO O TRATAMENTO DE EXCEÇÕES AQUI:
                         .authenticationEntryPoint(customAuthenticationEntryPoint)
                         .accessDeniedHandler(customAccessDeniedHandler));

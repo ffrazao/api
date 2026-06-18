@@ -55,12 +55,12 @@ spring:
     clean-disabled: true # NUNCA limpar banco em produção!
 
   # Segurança rigorosa
-  #security:
-  #oauth2:
-  #resourceserver:
-  #jwt:
-  #issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/corporativo}
-  #jwk-set-uri: ${KC_JWK_SET_URI:http://iam:8080/realms/corporativo/protocol/openid-connect/certs}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/corporativo}
+          #jwk-set-uri: ${KC_JWK_SET_URI:http://iam:8080/realms/corporativo/protocol/openid-connect/certs}
 
 # Server - configurações de produção
 server:

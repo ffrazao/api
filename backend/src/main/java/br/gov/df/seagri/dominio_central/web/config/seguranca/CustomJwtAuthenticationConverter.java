@@ -34,17 +34,16 @@ public class CustomJwtAuthenticationConverter implements Converter<Jwt, Abstract
         IdentidadeAcesso identidade = identidadeAcessoDAO.findByKeycloakSubComPessoa(subUuid).orElse(null);
 
         Collection<GrantedAuthority> authorities = new ArrayList<>();
+        // 3. (MVP) Injeta uma autoridade base.
+        // No futuro (Fase 2), faremos outra query aqui na tabela "vinculo_usuario" para
+        // extrair as Roles reais (ABAC/RBAC).
+        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
 
         if (identidade == null) {
             // Conta técnica existe, mas a Pessoa Física (CPF) ainda não foi vinculada.
             // Retorna um token cego, sem autoridades, forçando o isolamento na API.
             return new BusinessPrincipalToken(jwt, authorities, null);
         }
-
-        // 3. (MVP) Injeta uma autoridade base.
-        // No futuro (Fase 2), faremos outra query aqui na tabela "vinculo_usuario" para
-        // extrair as Roles reais (ABAC/RBAC).
-        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
 
         // 4. Retorna o token enriquecido com o ID real da Pessoa
         return new BusinessPrincipalToken(jwt, authorities, identidade.getPessoa().getId());

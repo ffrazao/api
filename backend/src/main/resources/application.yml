@@ -88,6 +88,7 @@ spring:
         jwt:
           # URL do emissor do Token. Valida criptograficamente os tokens gerados pelo Keycloak
           issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/corporativo}
+          #jwk-set-uri: ${KC_JWK_SET_URI:http://iam:8080/realms/corporativo/protocol/openid-connect/certs}
 
   cache:
     type: redis

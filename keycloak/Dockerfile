@@ -47,4 +47,5 @@ ENTRYPOINT ["/opt/keycloak/bin/entrypoint.sh", "/opt/keycloak/data/import"]
 
 #CMD ["/opt/keycloak/bin/kc.sh", "start", "--optimized"]
 
-CMD ["/opt/keycloak/bin/kc.sh", "start", "--import-realm"]
+#CMD ["/opt/keycloak/bin/kc.sh", "start", "--import-realm"]
+CMD ["/opt/keycloak/bin/kc.sh", "start", "--import-realm", "--hostname=https://localhost", "--proxy-headers=xforwarded", "--http-enabled=true"]
