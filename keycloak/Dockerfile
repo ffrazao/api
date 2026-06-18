@@ -5,7 +5,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal AS builder
 RUN microdnf install -y gettext && microdnf clean all
 
 # Estágio 2: Imagem Final do Keycloak
-FROM quay.io/keycloak/keycloak:26.0
+FROM quay.io/keycloak/keycloak:26.6.3
 
 USER root
 
@@ -47,4 +47,4 @@ ENTRYPOINT ["/opt/keycloak/bin/entrypoint.sh", "/opt/keycloak/data/import"]
 
 #CMD ["/opt/keycloak/bin/kc.sh", "start", "--optimized"]
 
-CMD ["/opt/keycloak/bin/kc.sh", "start"]
+CMD ["/opt/keycloak/bin/kc.sh", "start", "--import-realm"]
