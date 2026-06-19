@@ -8,12 +8,6 @@ bin/
 !gradle/wrapper/gradle-wrapper.jar
 !gradle/wrapper/gradle-wrapper.properties
 
-# IDEs
-.idea/
-*.iml
-*.ipr
-.vscode/
-
 # Java
 *.class
 *.log
@@ -24,9 +18,8 @@ hs_err_pid*
 Thumbs.db
 
 # Env / secrets
-.env
-.env.*
-*.env
+.env*
+!.env.example
 
 # Logs
 logs/

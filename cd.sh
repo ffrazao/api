@@ -1,4 +1,4 @@
 code backend/.
 code frontend-web/.
-code biometria/.
+code facenet/.
 code postgres/.
