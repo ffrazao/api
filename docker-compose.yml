@@ -139,47 +139,6 @@ services:
       - backend_net
     restart: unless-stopped
 
-  biometria:
-    build:
-      context: ./facenet
-      dockerfile: Dockerfile
-      args:
-        BIOMETRIA_USUARIO: ${BIOMETRIA_USUARIO:-appbiometria}
-    logging: *x-logging
-    container_name: biometria_facenet
-    deploy:
-      resources:
-        limits:
-          cpus: "1.5"
-          memory: 2G
-    image: biometria_facenet_img:latest
-    env_file:
-      - .env
-      - .env.docker
-    ports:
-      - "8000:8000"
-    volumes:
-      - biometria_logs:/home/${BIOMETRIA_USUARIO:-appbiometria}/app/logs
-      - ./facenet/weights:/home/${BIOMETRIA_USUARIO:-appbiometria}/.deepface/weights
-      - ./facenet:/home/${BIOMETRIA_USUARIO:-appbiometria}/app
-    networks:
-      - backend_net
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -sf ${BIOMETRIA_URL:-http://localhost:8000}/health || exit 1",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
-    stop_grace_period: 30s
-    depends_on:
-      storage:
-        condition: service_healthy
-
   iam:
     build:
       context: ./keycloak
@@ -222,6 +181,46 @@ services:
     depends_on:
       banco:
         condition: service_healthy
+
+  biometria:
+    build:
+      context: ./facenet
+      dockerfile: Dockerfile
+      args:
+        BIOMETRIA_USUARIO: ${BIOMETRIA_USUARIO:-appbiometria}
+    logging: *x-logging
+    container_name: biometria_facenet
+    profiles:
+      - "completo"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+    image: biometria_facenet_img:latest
+    env_file:
+      - .env
+      - .env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - biometria_logs:/home/${BIOMETRIA_USUARIO:-appbiometria}/app/logs
+      - ./facenet/weights:/home/${BIOMETRIA_USUARIO:-appbiometria}/.deepface/weights
+      - ./facenet:/home/${BIOMETRIA_USUARIO:-appbiometria}/app
+    networks:
+      - backend_net
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf ${BIOMETRIA_URL:-http://localhost:8000}/health || exit 1",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    stop_grace_period: 30s
 
   backend:
     build:
@@ -317,6 +316,8 @@ services:
       - frontend_net
       - backend_net
     depends_on:
+      backend:
+        condition: service_healthy
       frontend-web:
         condition: service_healthy
     restart: unless-stopped
