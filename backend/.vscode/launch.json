@@ -8,8 +8,10 @@
       "mainClass": "br.gov.df.seagri.SeagriApplication",
       "projectName": "seagri-backend",
       "args": "",
-      "vmArgs": "-XX:+AllowEnhancedClassRedefinition",
-      "cwd": "${workspaceFolder}"
+      "gradle": {
+        "enabled": true,
+        "task": "bootRun"
+      }
     }
   ]
 }

@@ -92,8 +92,16 @@ tasks.withType(JavaCompile) {
     options.generatedSourceOutputDirectory = file("$buildDir/generated/sources/annotationProcessor/java/main")
 }
 
-bootRun {
+tasks.register("bootRunDebug", org.springframework.boot.gradle.tasks.run.BootRun) {
+    mainClass = "br.gov.df.seagri.SeagriApplication"
+
     jvmArgs = [
         "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
     ]
+
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+bootRun {
+
 }

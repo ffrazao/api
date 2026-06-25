@@ -44,3 +44,5 @@ RUN mkdir -p /home/appbio/app/logs && chmod -R 777 /home/appbio/app/logs
 # Inicia o servidor
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"] ## usar somente quando for usar em produção
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# uvicorn main:app --host 0.0.0.0 --port 8000 --reload

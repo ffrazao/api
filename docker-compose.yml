@@ -329,6 +329,8 @@ services:
       dockerfile: Dockerfile
     logging: *x-logging
     container_name: sidecar_backup
+    profiles:
+      - "completo"
     env_file:
       - .env
       - .env.docker

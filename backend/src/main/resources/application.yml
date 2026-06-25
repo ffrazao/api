@@ -262,6 +262,10 @@ logging:
     "[org.springframework.web.cors]": DEBUG
     "[org.springframework.web.servlet.handler]": DEBUG
 
+    "[org.springframework.security.web.FilterChainProxy]": WARN
+    # Silencia o log de depuração do CORS para não poluir
+    "[br.gov.df.seagri.dominio_central.web.config.CorsLoggingFilter]": WARN
+
 armazenamento:
   diretorio:
     fotos: "#{systemProperties['user.home'] + '/seagri_fotos'}"
