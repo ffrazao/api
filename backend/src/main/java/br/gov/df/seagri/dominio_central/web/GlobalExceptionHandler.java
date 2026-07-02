@@ -25,7 +25,8 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.FORBIDDEN, "Acesso Negado", List.of(ex.getMessage()));
     }
 
-    // 2. Erros de Violação de RFC (ex: Tentativa de Editar Entidade Imutável - RFC-0005)
+    // 2. Erros de Violação de RFC (ex: Tentativa de Editar Entidade Imutável -
+    // RFC-0005)
     @ExceptionHandler(UnsupportedOperationException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnsupportedOperation(UnsupportedOperationException ex) {
         return buildErrorResponse(HttpStatus.METHOD_NOT_ALLOWED, "Operação Não Permitida", List.of(ex.getMessage()));
@@ -39,7 +40,7 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .collect(Collectors.toList());
-                
+
         return buildErrorResponse(HttpStatus.BAD_REQUEST, "Erro de Validação dos Dados", errors);
     }
 
@@ -52,18 +53,32 @@ public class GlobalExceptionHandler {
     // 5. Erro Técnico Não Tratado (Fallback)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleAllExceptions(Exception ex) {
-        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Erro Interno no Servidor", List.of(ex.getMessage()));
+        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Erro Interno no Servidor",
+                List.of(ex.getMessage()));
     }
 
     // Utilitário interno para montar a resposta de erro padronizada
-    private ResponseEntity<ApiResponse<Void>> buildErrorResponse(HttpStatus status, String message, List<String> errors) {
+    private ResponseEntity<ApiResponse<Void>> buildErrorResponse(HttpStatus status, String message,
+            List<String> errors) {
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .status(status.value())
                 .message(message)
                 .errors(errors)
                 .build();
-                
+
         return ResponseEntity.status(status).body(response);
     }
-}
 
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<ApiResponse<Object>> handleRuntime(RuntimeException ex) {
+        // Se for um erro de "não possui vínculo"
+        if (ex.getMessage().contains("não possui vínculo")) {
+            // Retornamos 403 para que o frontend entenda como "Onboarding necessário"
+            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED)
+                    .body(ApiResponse.builder().message(ex.getMessage()).build());
+        }
+        // Para outros erros reais de servidor, mantemos o 500
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.builder().message("Erro interno: " + ex.getMessage()).build());
+    }
+}

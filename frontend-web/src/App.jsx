@@ -31,17 +31,24 @@ export default function App() {
       setContexto(dadosContexto);
       setPrecisaOnboarding(false); // Garante que tira da tela de onboarding se der certo
     } catch (error) {
-      console.warn("Usuário sem contexto ou erro na busca.", error);
+      console.warn("Erro na busca do contexto do usuário.", error);
+
+      const status = error.response?.status;
+
       // Se o Spring Security retornar 403 (Acesso Negado via CustomAccessDeniedHandler)
-      if (error.response && error.response.status === 403) {
+      if (status === 428) {
         console.warn("Usuário sem identidade canônica. Exibindo Onboarding...");
         setPrecisaOnboarding(true);
-      } else {
+      }
+      // Podemos tratar o 404 como "logado, mas não vinculado a org" (Aceitar convite)
+      else if (status === 404 || status === 500) {
         console.warn(
           "Usuário sem contexto na organização. Ele precisa aceitar um convite.",
           error,
         );
-        setPrecisaOnboarding(false);
+        setContexto(null); // Garante que caia no "Limbo" (renderiza PainelConvite)
+      } else {
+        console.error("Erro crítico no backend:", error);
       }
     } finally {
       setCarregandoContexto(false);
