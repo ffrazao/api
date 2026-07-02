@@ -2,12 +2,29 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Depurar apenas servidor (npm run dev)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Abrir Chrome em modo depuração (localhost:5173)",
       "type": "chrome",
       "request": "launch",
-      "name": "Executar Vite (npm run dev)",
       "url": "http://localhost:5173",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "Iniciar Servidor Vite"
+      "runtimeArgs": ["--incognito"]
+    },
+    {
+      "name": "Rodar servidor e abrir Chrome (incognito)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "Servidor Vite (npm run dev)",
+      "runtimeArgs": ["--incognito"]
     }
   ]
 }
