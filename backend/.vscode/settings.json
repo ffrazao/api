@@ -1,3 +1,4 @@
 {
+  "workbench.profiles": "Java - Spring",
   "java.compile.nullAnalysis.mode": "automatic"
 }
