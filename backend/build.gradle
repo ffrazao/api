@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'org.springframework.boot' version '3.5.14'
-    id 'io.spring.dependency-management' version '1.1.4'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'br.gov.df.seagri'
@@ -74,7 +74,9 @@ dependencies {
 
     // Cliente S3 (AWS SDK V2) para comunicação com o SeaweedFS
     implementation platform('software.amazon.awssdk:bom:2.25.11')
-    implementation 'software.amazon.awssdk:s3'
+    implementation("software.amazon.awssdk:s3") {
+        exclude group: "commons-logging", module: "commons-logging"
+    }
 
     // Cache (Spring)
     implementation 'org.springframework.boot:spring-boot-starter-cache'

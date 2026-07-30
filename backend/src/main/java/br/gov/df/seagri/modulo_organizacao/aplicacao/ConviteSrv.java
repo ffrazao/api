@@ -52,7 +52,7 @@ public class ConviteSrv {
         } else {
             // Como ele já tem vínculo geral com a SEAGRI, buscamos para associar à nova
             // alocação de unidade
-            vinculo = vinculoUsuarioDAO.findByKeycloakSub(keycloakSub).stream()
+            vinculo = vinculoUsuarioDAO.findByKeycloakSub(keycloakSub).get().stream()
                     .filter(v -> v.obterOrganizacaoId().equals(convite.getOrganizacao().getId()))
                     .findFirst()
                     .orElseThrow(() -> new IllegalStateException("Erro ao recuperar vínculo existente."));

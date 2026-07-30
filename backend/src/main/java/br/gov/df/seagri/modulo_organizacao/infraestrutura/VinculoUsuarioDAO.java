@@ -19,7 +19,7 @@ public interface VinculoUsuarioDAO extends BaseDAO<VinculoUsuario, Long> {
     List<VinculoUsuario> findByOrganizacaoId(UUID organizacaoId);
 
     // Lista todas as organizações nas quais um usuário possui vínculo
-    List<VinculoUsuario> findByKeycloakSub(UUID keycloakSub);
+    Optional<List<VinculoUsuario>> findByKeycloakSub(UUID keycloakSub);
 
     // NOVO: Valida rapidamente se o usuário já possui vínculo (Usado no ConviteSrv
     // para evitar duplicação)

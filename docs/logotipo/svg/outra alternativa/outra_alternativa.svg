@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 800 900">
+
+    <defs>
+
+        <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#1E88E5"/>
+            <stop offset="100%" stop-color="#0D47A1"/>
+        </linearGradient>
+
+        <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#57C84D"/>
+            <stop offset="100%" stop-color="#138A36"/>
+        </linearGradient>
+
+    </defs>
+
+    <!-- Pessoa esquerda -->
+
+    <g id="leftPerson">
+
+        <circle cx="210" cy="110" r="42"
+                fill="url(#blueGrad)"/>
+
+        <path
+            d="
+                M120 430
+                C120 270 180 200 330 205
+                C275 235 235 285 225 365
+                C215 445 225 520 255 585
+                C175 555 120 500 120 430
+            "
+            fill="url(#blueGrad)"/>
+
+    </g>
+
+    <!-- Pessoa direita -->
+
+    <g id="rightPerson">
+
+        <circle cx="590" cy="110" r="42"
+                fill="url(#greenGrad)"/>
+
+        <path
+            d="
+                M680 430
+                C680 270 620 200 470 205
+                C525 235 565 285 575 365
+                C585 445 575 520 545 585
+                C625 555 680 500 680 430
+            "
+            fill="url(#greenGrad)"/>
+
+    </g>
+
+    <!-- Relógio -->
+
+    <g id="clock">
+
+        <circle
+            cx="400"
+            cy="390"
+            r="170"
+            fill="white"
+            stroke="#062B53"
+            stroke-width="18"/>
+
+        <!-- marcações -->
+
+        <g stroke="#062B53"
+           stroke-width="6"
+           stroke-linecap="round">
+
+            <line x1="400" y1="235" x2="400" y2="255"/>
+
+            <line x1="477" y1="255" x2="467" y2="272"/>
+
+            <line x1="535" y1="313" x2="518" y2="323"/>
+
+            <line x1="555" y1="390" x2="535" y2="390"/>
+
+            <line x1="535" y1="467" x2="518" y2="457"/>
+
+            <line x1="477" y1="525" x2="467" y2="508"/>
+
+            <line x1="400" y1="545" x2="400" y2="525"/>
+
+            <line x1="323" y1="525" x2="333" y2="508"/>
+
+            <line x1="265" y1="467" x2="282" y2="457"/>
+
+            <line x1="245" y1="390" x2="265" y2="390"/>
+
+            <line x1="265" y1="313" x2="282" y2="323"/>
+
+            <line x1="323" y1="255" x2="333" y2="272"/>
+
+        </g>
+
+        <!-- ponteiro horas -->
+
+        <line
+            x1="400"
+            y1="390"
+            x2="488"
+            y2="354"
+            stroke="#062B53"
+            stroke-width="20"
+            stroke-linecap="round"/>
+
+        <!-- ponteiro minutos -->
+
+        <line
+            x1="400"
+            y1="390"
+            x2="505"
+            y2="445"
+            stroke="#062B53"
+            stroke-width="12"
+            stroke-linecap="round"/>
+
+        <circle
+            cx="400"
+            cy="390"
+            r="18"
+            fill="#062B53"/>
+
+    </g>
+
+    <!-- Texto -->
+
+    <text
+        x="400"
+        y="720"
+        text-anchor="middle"
+        font-size="72"
+        font-family="Montserrat, Arial, sans-serif"
+        font-weight="700"
+        fill="#072D57">
+
+        TEMPO DE
+
+    </text>
+
+    <text
+        x="400"
+        y="800"
+        text-anchor="middle"
+        font-size="82"
+        font-family="Montserrat, Arial, sans-serif"
+        font-weight="800">
+
+        <tspan fill="url(#blueGrad)">PRO</tspan><tspan fill="url(#greenGrad)">JETOS</tspan>
+
+    </text>
+
+</svg>

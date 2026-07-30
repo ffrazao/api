@@ -32,9 +32,13 @@ public class CacheConfig {
     @Bean
     public CaffeineCacheManager caffeineCacheManager() {
         CaffeineCacheManager manager = new CaffeineCacheManager("vetorBiometrico"); // Defina os nomes dos caches
-        manager.setCaffeine(Caffeine.newBuilder()
-                .maximumSize(500)
-                .expireAfterWrite(10, TimeUnit.MINUTES));
+        // Caffeine<Object, Object> builder = Caffeine.newBuilder();
+        // builder.initialCapacity(256);
+        // builder.maximumSize(2_000);
+        // builder.expireAfterAccess(Duration.ofMinutes(10));
+        // builder.recordStats();
+        // manager.setCaffeine(builder);
+
         return manager;
     }
 

@@ -7,6 +7,10 @@ import java.util.UUID;
 @Data
 @Builder
 public class ContextoUsuarioDTO {
+
+    private boolean possuiIdentidadeCanonica;
+    private boolean possuiVinculoAtivo;
+
     private UUID organizacaoId;
     private Long unidadeId;
     private String papel; // Ex: OWNER, MANAGER, PARTICIPANT (Conforme RFC-0010)

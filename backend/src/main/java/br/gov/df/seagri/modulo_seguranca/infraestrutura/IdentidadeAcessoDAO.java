@@ -22,6 +22,6 @@ public interface IdentidadeAcessoDAO
      */
     @Query("SELECT i FROM IdentidadeAcesso i JOIN FETCH i.pessoa WHERE i.keycloakSub = :sub")
     @Cacheable(value = "identidade_acesso", key = "#sub", unless = "#result == null")
-    Optional<IdentidadeAcesso> findByKeycloakSubComPessoa(@Param("sub") UUID sub);
+    public Optional<IdentidadeAcesso> findByKeycloakSubComPessoa(@Param("sub") UUID sub);
 
 }

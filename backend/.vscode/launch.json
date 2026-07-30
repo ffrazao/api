@@ -5,13 +5,7 @@
       "type": "java",
       "name": "Spring Boot (Gradle)",
       "request": "launch",
-      "mainClass": "br.gov.df.seagri.SeagriApplication",
-      "projectName": "seagri-backend",
-      "args": "",
-      "gradle": {
-        "enabled": true,
-        "task": "bootRun"
-      }
+      "mainClass": "br.gov.df.seagri.SeagriApplication"
     }
   ]
 }

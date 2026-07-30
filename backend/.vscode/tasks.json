@@ -3,18 +3,11 @@
   "tasks": [
     {
       "label": "Spring Boot: bootRun",
-      "type": "gradle",
-      "task": "bootRun",
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "clear": true,
-        "reveal": "always",
-        "focus": false
-      }
+      "type": "shell",
+      "command": "./gradlew",
+      "args": ["bootRun"],
+      "group": "build",
+      "problemMatcher": []
     }
   ]
 }
