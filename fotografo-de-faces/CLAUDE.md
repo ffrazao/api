@@ -28,5 +28,5 @@ CAPTURANDO → FOTOGRAFIA_PRONTA | ERRO
 
 ## Convenções deste projeto
 - Editor de preferência do desenvolvedor: Sublime Text (`subl`).
-- Um commit por fase concluída, mensagem no formato `feat(fN): descrição`.
+- Um commit por fase concluída (ou por bloco de configuração fechado), mensagem no formato `feat(fN): descrição`. Evitar commits fragmentados por ajuste isolado dentro da mesma fase.
 - Testes da máquina de estados (Vitest) não dependem de câmera real — sempre mockar.
