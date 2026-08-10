@@ -1,21 +1,49 @@
 {
-  "name": "fotografo-de-faces",
-  "private": true,
+  "name": "@seagri/fotografo-de-faces",
   "version": "0.0.0",
   "type": "module",
+  "description": "Componente React para captura assistida de fotografias de face, com detecção, avaliação de qualidade e recorte biométrico.",
+  "license": "UNLICENSED",
+  "main": "./dist/fotografo-de-faces.cjs",
+  "module": "./dist/fotografo-de-faces.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/fotografo-de-faces.js",
+      "require": "./dist/fotografo-de-faces.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "public/models",
+    "README.md"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --config vite.lib.config.ts",
+    "build:demo": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "download:models": "node scripts/download-face-models.mjs",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "styled-components": "^6.0.0"
   },
   "dependencies": {
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "face-api.js": "^0.22.2"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.12",
+    "@storybook/addon-docs": "^10.5.7",
+    "@storybook/react-vite": "^10.5.7",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^24.13.3",
@@ -24,8 +52,13 @@
     "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^30.0.1",
     "oxlint": "^1.75.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "storybook": "^10.5.7",
+    "styled-components": "^6.5.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
+    "vite-plugin-dts": "^5.0.3",
     "vitest": "^4.1.10"
   }
 }

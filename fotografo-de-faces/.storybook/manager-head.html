@@ -1,0 +1,43 @@
+<!--
+  O preview do Storybook roda dentro de um <iframe>, e getUserMedia() só é
+  permitido em iframes que declarem `allow="camera"` (Permissions Policy).
+  Sem isso, o navegador nega o acesso e o componente cai no caminho de erro
+  de permissão da F2 (§05.11 crit. 5) — o que ele trata com elegância, mas
+  impede de ver o componente funcionando de verdade no sandbox.
+
+  Este patch marca o iframe de preview com `allow="camera; microphone"` assim
+  que ele aparece. Como a política de permissão é avaliada na navegação, o
+  src é reatribuído uma única vez (guardado por um atributo) para o novo
+  `allow` valer no documento carregado.
+
+  Se por algum motivo isso não funcionar no seu navegador, abra a história
+  diretamente como documento de topo — ali a permissão é concedida
+  normalmente: http://localhost:6006/iframe.html?id=<id-da-historia>
+-->
+<script>
+  (function () {
+    var PATCHED_ATTRIBUTE = 'data-camera-allow-patched'
+
+    function patchIframe(iframe) {
+      if (iframe.hasAttribute(PATCHED_ATTRIBUTE)) return
+      iframe.setAttribute(PATCHED_ATTRIBUTE, 'true')
+
+      var currentAllow = iframe.getAttribute('allow') || ''
+      if (currentAllow.indexOf('camera') !== -1) return
+
+      iframe.setAttribute('allow', ('camera; microphone; ' + currentAllow).trim())
+
+      var src = iframe.getAttribute('src')
+      if (src) iframe.setAttribute('src', src)
+    }
+
+    function scan() {
+      var iframes = document.querySelectorAll('iframe#storybook-preview-iframe')
+      for (var i = 0; i < iframes.length; i++) patchIframe(iframes[i])
+    }
+
+    new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true })
+    document.addEventListener('DOMContentLoaded', scan)
+    scan()
+  })()
+</script>
