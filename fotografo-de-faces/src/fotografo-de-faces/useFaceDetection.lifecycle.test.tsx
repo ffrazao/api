@@ -13,7 +13,8 @@ import type { UseFaceDetectionOptions } from './useFaceDetection'
 const FRAME = { width: 640, height: 480 }
 
 function fakeVideo(): HTMLVideoElement {
-  return { videoWidth: FRAME.width, videoHeight: FRAME.height } as unknown as HTMLVideoElement
+  // readyState 4 (HAVE_ENOUGH_DATA): um `<video>` sem quadro decodificado não vai para o motor.
+  return { videoWidth: FRAME.width, videoHeight: FRAME.height, readyState: 4 } as unknown as HTMLVideoElement
 }
 
 function createCountingDetector(): { detector: FaceDetector; loadModels: ReturnType<typeof vi.fn> } {

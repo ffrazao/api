@@ -235,39 +235,85 @@ export function computeSharpness(image: ImageDataLike): number {
 // --- Estabilidade entre frames (§10.13) ------------------------------------
 
 export interface StabilityThresholds {
-  /** Deslocamento máximo do centro do rosto entre frames, como fração da largura do quadro. */
+  /**
+   * Deslocamento máximo do centro do rosto entre frames, como fração da
+   * largura do quadro.
+   *
+   * Medido a 12fps com rosto real e pessoa quase parada, o pior quadro deu
+   * 0,015 e a média móvel de 3 pares, 0,010 — contra o limite antigo de 0,08,
+   * que a 12fps equivalia a deixar o rosto atravessar 612px/s sem reprovar.
+   * O limite atual mantém ~5x de folga sobre o ruído medido e volta a pegar
+   * quem sai de posição de verdade.
+   */
   maxCenterShiftRatio: number
-  /** Variação máxima de área da caixa entre frames, como fração da área anterior. */
-  maxSizeChangeRatio: number
+  /**
+   * Variação máxima da ESCALA da caixa entre frames — média das variações
+   * relativas de largura e altura, não da área.
+   *
+   * A área é o produto das duas dimensões, então um tremor linear de x% na
+   * caixa vira ~2x% de variação de área. Medindo em cima de rosto real a 12fps
+   * (pessoa quase parada), a variação linear ficou em 0,011 na mediana e 0,082
+   * no pior quadro, enquanto a mesma amostra em área chegou a 0,178 — o dobro.
+   * O critério estava, na prática, gastando o dobro do orçamento por puro
+   * ruído do detector.
+   */
+  maxScaleChangeRatio: number
+  /**
+   * Quantos pares de quadros consecutivos entram na média móvel.
+   *
+   * O ruído do detector é de cauda pesada: na mesma amostra real, o p99 da
+   * variação de escala foi ~8x a mediana. Decidir com um único quadro fazia um
+   * pico isolado reprovar `estabilidade` e derrubar PRONTO/CRONOMETRANDO. A
+   * média de poucos quadros corta o pico sem esconder movimento sustentado —
+   * a 12fps, 3 pares cobrem ~250ms, então um movimento de verdade ainda
+   * cancela quase de imediato (§10.6, §10.7, §10.13).
+   */
+  smoothingFrames: number
 }
 
 export const DEFAULT_STABILITY_THRESHOLDS: StabilityThresholds = {
-  maxCenterShiftRatio: 0.08,
-  maxSizeChangeRatio: 0.3,
+  maxCenterShiftRatio: 0.05,
+  maxScaleChangeRatio: 0.15,
+  smoothingFrames: 3,
 }
 
 /**
  * §10.13: pequenos movimentos naturais não devem reprovar o frame — só
- * variações que violem a biometria básica (salto grande de posição/tamanho
- * entre frames consecutivos, típico de detecção instável ou movimento brusco).
+ * variações que comprometam a fotografia. Compara a caixa atual com o histórico
+ * recente da MESMA candidata e decide pela média, não por um quadro isolado.
+ *
+ * `recentBoxes` vem em ordem cronológica (mais antiga primeiro) e não inclui a
+ * caixa atual.
  */
 export function estimateStability(
   currentBox: BoundingBox,
-  previousBox: BoundingBox | null,
+  recentBoxes: BoundingBox[],
   frame: FrameSize,
   thresholds: StabilityThresholds = DEFAULT_STABILITY_THRESHOLDS,
 ): boolean {
-  if (!previousBox) return true // nada para comparar ainda — não penaliza o primeiro frame do ciclo.
+  // Nada para comparar ainda — não penaliza o primeiro frame do ciclo.
+  if (recentBoxes.length === 0) return true
 
-  const currentCenter = { x: currentBox.x + currentBox.width / 2, y: currentBox.y + currentBox.height / 2 }
-  const previousCenter = { x: previousBox.x + previousBox.width / 2, y: previousBox.y + previousBox.height / 2 }
-  const centerShiftRatio = distance(currentCenter, previousCenter) / (frame.width || 1)
+  const janela = Math.max(1, thresholds.smoothingFrames)
+  const sequencia = [...recentBoxes.slice(-janela), currentBox]
 
-  const previousArea = previousBox.width * previousBox.height
-  const currentArea = currentBox.width * currentBox.height
-  const sizeChangeRatio = Math.abs(currentArea - previousArea) / (previousArea || 1)
+  let somaCentro = 0
+  let somaEscala = 0
+  for (let i = 1; i < sequencia.length; i++) {
+    const anterior = sequencia[i - 1]
+    const atual = sequencia[i]
 
-  return centerShiftRatio <= thresholds.maxCenterShiftRatio && sizeChangeRatio <= thresholds.maxSizeChangeRatio
+    const centroAtual = { x: atual.x + atual.width / 2, y: atual.y + atual.height / 2 }
+    const centroAnterior = { x: anterior.x + anterior.width / 2, y: anterior.y + anterior.height / 2 }
+    somaCentro += distance(centroAtual, centroAnterior) / (frame.width || 1)
+
+    const varLargura = Math.abs(atual.width - anterior.width) / (anterior.width || 1)
+    const varAltura = Math.abs(atual.height - anterior.height) / (anterior.height || 1)
+    somaEscala += (varLargura + varAltura) / 2
+  }
+
+  const pares = sequencia.length - 1
+  return somaCentro / pares <= thresholds.maxCenterShiftRatio && somaEscala / pares <= thresholds.maxScaleChangeRatio
 }
 
 // --- Avaliação combinada ----------------------------------------------------
@@ -292,8 +338,8 @@ export interface QualityEvaluationInput {
   frame: FrameSize
   /** Recorte da face já extraído (ver useFaceDetection.ts) para nitidez/iluminação. */
   faceImage: ImageDataLike
-  /** Caixa do frame anterior da mesma candidata, para o critério de estabilidade. */
-  previousBox: BoundingBox | null
+  /** Histórico recente de caixas da MESMA candidata (cronológico, sem a atual), para o critério de estabilidade. */
+  recentBoxes: BoundingBox[]
 }
 
 /**
@@ -309,7 +355,7 @@ export function evaluateQuality(
   const framing = estimateFraming(input.box, input.frame, thresholds.framing)
   const luminance = computeLuminance(input.faceImage)
   const sharpness = computeSharpness(input.faceImage)
-  const stable = estimateStability(input.box, input.previousBox, input.frame, thresholds.stability)
+  const stable = estimateStability(input.box, input.recentBoxes, input.frame, thresholds.stability)
 
   const criteria: QualityCriteria = {
     enquadramento: framing.withinBounds,

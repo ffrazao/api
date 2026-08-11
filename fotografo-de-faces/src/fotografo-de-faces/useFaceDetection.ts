@@ -17,11 +17,30 @@
 import { useEffect, useRef, useState } from 'react'
 import { createFaceApiDetector } from './faceDetector'
 import type { DetectedFace, FaceDetector } from './faceDetector'
-import { evaluateQuality, findClosestBoxIndex, selectBestFaceIndex } from './faceMetrics'
+import { DEFAULT_QUALITY_THRESHOLDS, evaluateQuality, findClosestBoxIndex, selectBestFaceIndex } from './faceMetrics'
 import type { BoundingBox, FrameSize, ImageDataLike, QualityThresholds } from './faceMetrics'
 import type { FotografiaValue, FotografoDeFacesEvent, FotografoDeFacesMode, FotografoDeFacesState } from './types'
 
 export type FaceDetectionStatus = 'idle' | 'loading-models' | 'ready' | 'error'
+
+/**
+ * Observabilidade do loop de detecção — NÃO altera comportamento.
+ *
+ * O `catch` do tick engole qualquer exceção de propósito (uma falha pontual do
+ * motor não pode matar o ciclo), mas isso também apagava qualquer rastro de
+ * erro em `detect()`, `sampleFaceImageData`, `evaluateQuality` ou nos dispatches.
+ * Em desenvolvimento o erro passa a ser anunciado antes de ser engolido; em
+ * produção o Vite substitui `import.meta.env.DEV` por `false` e o bloco some no
+ * tree-shaking, então o console do usuário final continua limpo.
+ */
+function avisarFalhaNoQuadro(fase: 'detect' | 'processamento', cause: unknown): void {
+  if (!import.meta.env.DEV) return
+  console.warn(
+    `[FotografoDeFaces] quadro descartado — falha na fase "${fase}" do loop de detecção. ` +
+      'O ciclo continua, mas este quadro não alimentou a máquina de estados.',
+    cause,
+  )
+}
 
 /** Uma face atualmente visível no quadro, para renderização (§07.9, §09.6) — não é usada pela máquina de estados. */
 export interface VisibleFace {
@@ -50,6 +69,8 @@ export interface UseFaceDetectionOptions {
   targetFps?: number
   /** Tolerância de oscilação antes de considerar a candidata perdida (§08.6, §18.4), em ms. */
   candidateLossToleranceMs?: number
+  /** Prazo para abandonar um quadro cujo `detect()` não assentou, mantendo o ciclo vivo (§05.2). */
+  frameWatchdogMs?: number
   /** Agenda o próximo quadro; por padrão `requestAnimationFrame`. Injetável para testes. */
   scheduleFrame?: (callback: () => void) => number
   cancelFrame?: (handle: number) => void
@@ -78,6 +99,31 @@ const DEFAULT_TARGET_FPS = 12
 const DEFAULT_CANDIDATE_LOSS_TOLERANCE_MS = 700
 /** Deslocamento máximo (fração da largura do quadro) para considerar duas caixas a mesma face entre quadros (§08.4). */
 const DEFAULT_LOCK_CONTINUITY_RATIO = 0.25
+
+/**
+ * `HTMLMediaElement.HAVE_CURRENT_DATA` — há pelo menos um quadro decodificado.
+ *
+ * Abaixo disso o `<video>` não pode ser entregue ao motor: a face-api.js, ao
+ * receber uma mídia que considera "ainda não carregada", fica esperando o
+ * evento `load` do elemento — que um `<video>` nunca dispara (ele dispara
+ * `loadeddata`/`canplay`). A promessa de `detect()` então nunca assenta: não
+ * resolve, não rejeita, e nada aparece no `catch`.
+ */
+const HAVE_CURRENT_DATA = 2
+
+/**
+ * Prazo do cão de guarda do quadro em processamento (§05.2 — o ciclo não pode
+ * morrer). É uma rede de segurança genérica: nenhuma promessa de `detect()`,
+ * por qualquer motivo, pode deixar o loop inerte para sempre. Folgado de
+ * propósito — uma inferência lenta em máquina fraca não pode ser confundida
+ * com um travamento.
+ */
+const DEFAULT_FRAME_WATCHDOG_MS = 4000
+
+/** Um `<video>` só pode ir para o motor com quadro decodificado e dimensões reais. */
+function isVideoReadyForDetection(video: HTMLVideoElement): boolean {
+  return video.readyState >= HAVE_CURRENT_DATA && video.videoWidth > 0 && video.videoHeight > 0
+}
 
 function defaultSampleFaceImageData(video: HTMLVideoElement, box: BoundingBox): ImageDataLike {
   const canvas = document.createElement('canvas')
@@ -120,6 +166,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
     thresholds,
     targetFps = DEFAULT_TARGET_FPS,
     candidateLossToleranceMs = DEFAULT_CANDIDATE_LOSS_TOLERANCE_MS,
+    frameWatchdogMs: watchdogMs = DEFAULT_FRAME_WATCHDOG_MS,
   } = options
 
   const sampleFaceImageData = options.sampleFaceImageData ?? defaultSampleFaceImageData
@@ -165,10 +212,28 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
     }
   }, [value, detector, modelsUrl])
 
+  // Espelho sempre atual do estado da máquina, sem entrar nas dependências do
+  // efeito do loop (mesmo padrão de "ref com o valor mais recente" usado na
+  // F5): o loop precisa consultar a verdade da máquina a cada quadro, mas não
+  // deve ser reiniciado a cada transição de estado.
+  const stateRef = useRef(state)
+  useEffect(() => {
+    stateRef.current = state
+  })
+
   const hasCandidateRef = useRef(false)
-  const previousBoxRef = useRef<BoundingBox | null>(null)
+  /** Histórico recente de caixas da candidata atual — base da média móvel de estabilidade (§10.13). */
+  const recentBoxesRef = useRef<BoundingBox[]>([])
   const noFaceStreakStartRef = useRef<number | null>(null)
   const processingRef = useRef(false)
+  /** Quando o quadro em processamento entrou no motor — base do cão de guarda. */
+  const processingStartedAtRef = useRef(0)
+  /**
+   * Geração do quadro em processamento. O cão de guarda incrementa isto ao
+   * abandonar um quadro, para que um resultado atrasado que chegue depois seja
+   * descartado em vez de alimentar a máquina fora de hora.
+   */
+  const processingGenerationRef = useRef(0)
   // -Infinity garante que o primeiro quadro do ciclo seja sempre processado,
   // mesmo quando o relógio injetado (testes) começa em 0.
   const lastProcessedAtRef = useRef(-Infinity)
@@ -197,7 +262,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
       // Desativação de verdade (não é uma reexecução síncrona do efeito) —
       // encerra a sessão de candidata local para começar do zero da próxima vez.
       hasCandidateRef.current = false
-      previousBoxRef.current = null
+      recentBoxesRef.current = []
       noFaceStreakStartRef.current = null
       updateVisibleFaces([])
       return
@@ -205,13 +270,47 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
 
     const frameIntervalMs = 1000 / targetFps
 
+    /**
+     * A MÁQUINA é a fonte da verdade sobre existir ou não uma candidata — o
+     * hook só mantém `hasCandidateRef` como atalho local. Os dois podem
+     * divergir sozinhos: uma oscilação de qualidade em PRONTO/CRONOMETRANDO
+     * faz o reducer voltar a DETECTANDO e limpar a candidata (§06.4/§06.5),
+     * e como DETECTANDO continua sendo um estado ativo, o efeito não
+     * reexecuta e nada aqui seria avisado.
+     *
+     * Sem esta reconciliação, o hook seguiria achando que já anunciou a
+     * candidata e mandaria apenas QUALITY_CHANGED — que DETECTANDO ignora —
+     * travando o ciclo para sempre enquanto o rosto continuasse em cena.
+     * Reconciliar a cada quadro torna o ciclo autocorretivo: assim que a
+     * máquina volta a DETECTANDO, a próxima detecção reanuncia a candidata.
+     */
+    const reconciliarComMaquina = () => {
+      if (stateRef.current === 'DETECTANDO' && hasCandidateRef.current) {
+        hasCandidateRef.current = false
+        // O Face Lock morre junto com a candidata: sem isso, o rastreamento
+        // por proximidade continuaria mirando uma caixa órfã (§08.7, §08.10).
+        recentBoxesRef.current = []
+        noFaceStreakStartRef.current = null
+      }
+    }
+
+    /**
+     * Guarda só o necessário para a média móvel do critério de estabilidade —
+     * um quadro a mais que a janela, já que a janela conta PARES de quadros.
+     */
+    const pushRecentBox = (box: BoundingBox) => {
+      const limite = Math.max(1, (thresholds?.stability ?? DEFAULT_QUALITY_THRESHOLDS.stability).smoothingFrames)
+      const historico = [...recentBoxesRef.current, box]
+      recentBoxesRef.current = historico.slice(-limite)
+    }
+
     const evaluateAndDispatch = (face: DetectedFace, frame: FrameSize) => {
       const faceImage = sampleFaceImageData(videoElement, face.box)
       const quality = evaluateQuality(
-        { box: face.box, landmarks: face.landmarks, frame, faceImage, previousBox: previousBoxRef.current },
+        { box: face.box, landmarks: face.landmarks, frame, faceImage, recentBoxes: recentBoxesRef.current },
         thresholds,
       )
-      previousBoxRef.current = face.box
+      pushRecentBox(face.box)
       updateCandidateBox(face.box)
       dispatch({ type: 'QUALITY_CHANGED', quality })
     }
@@ -225,7 +324,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
         dispatch({ type: 'CANDIDATE_LOST' })
         hasCandidateRef.current = false
         noFaceStreakStartRef.current = null
-        previousBoxRef.current = null
+        recentBoxesRef.current = []
         updateVisibleFaces([])
       }
     }
@@ -242,7 +341,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
 
       if (!hasCandidateRef.current) {
         hasCandidateRef.current = true
-        previousBoxRef.current = null
+        recentBoxesRef.current = []
         dispatch({ type: 'CANDIDATE_DETECTED', candidate: { id: `face-${Math.round(nowMs)}` } })
       }
 
@@ -264,7 +363,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
         )
 
         hasCandidateRef.current = true
-        previousBoxRef.current = null
+        recentBoxesRef.current = []
         noFaceStreakStartRef.current = null
         dispatch({ type: 'CANDIDATE_DETECTED', candidate: { id: `face-${Math.round(nowMs)}` } })
         evaluateAndDispatch(faces[bestIndex], frame)
@@ -274,7 +373,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
 
       // Já travado: só tenta reencontrar a MESMA face por proximidade espacial
       // — nunca reavalia qualidade nem deixa outra face "invadir" o foco.
-      const lockedBox = previousBoxRef.current
+      const lockedBox = recentBoxesRef.current.at(-1) ?? null
       const matchIndex =
         lockedBox && faces.length > 0
           ? findClosestBoxIndex(
@@ -310,28 +409,62 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
       if (encerrado) return
       frameHandle = scheduleFrame(tick)
 
-      if (processingRef.current) return // exclusividade: não sobrepõe detecções.
       const nowMs = now()
+
+      if (processingRef.current) {
+        // Exclusividade: não sobrepõe detecções — mas nunca em definitivo. Se o
+        // motor não devolveu nada dentro do prazo, o quadro é abandonado e o
+        // ciclo volta a andar; senão uma única promessa pendente deixaria o loop
+        // vivo porém inerte para sempre (§05.2).
+        if (nowMs - processingStartedAtRef.current < watchdogMs) return
+        processingGenerationRef.current += 1
+        processingRef.current = false
+        avisarFalhaNoQuadro(
+          'detect',
+          new Error(`o motor não respondeu em ${watchdogMs}ms — quadro abandonado para não travar o ciclo`),
+        )
+      }
+
       if (nowMs - lastProcessedAtRef.current < frameIntervalMs) return // limita a taxa (crit. 2).
+
+      // Entregar ao motor um `<video>` sem quadro decodificado trava a detecção
+      // para sempre (ver HAVE_CURRENT_DATA). Só pula o quadro: assim que a
+      // câmera decodificar o primeiro frame, o ciclo segue normalmente.
+      if (!isVideoReadyForDetection(videoElement)) return
+
       lastProcessedAtRef.current = nowMs
 
       processingRef.current = true
+      processingStartedAtRef.current = nowMs
+      const geracao = processingGenerationRef.current
       detector
         .detect(videoElement)
         .then((faces) => {
           if (encerrado || !isMountedRef.current) return
-          const frame = { width: videoElement.videoWidth, height: videoElement.videoHeight }
-          if (mode === 'quiosque') {
-            handleQuiosqueMode(faces, frame, nowMs)
-          } else {
-            handleSingleFaceMode(faces, frame, nowMs)
+          if (geracao !== processingGenerationRef.current) return // quadro já abandonado pelo cão de guarda.
+          // O try/catch interno não muda o que acontece (o `.catch` de fora já
+          // engolia isto): serve só para separar, no aviso, uma falha do motor
+          // de uma falha do processamento do resultado.
+          try {
+            reconciliarComMaquina()
+            const frame = { width: videoElement.videoWidth, height: videoElement.videoHeight }
+            if (mode === 'quiosque') {
+              handleQuiosqueMode(faces, frame, nowMs)
+            } else {
+              handleSingleFaceMode(faces, frame, nowMs)
+            }
+          } catch (cause) {
+            avisarFalhaNoQuadro('processamento', cause)
           }
         })
-        .catch(() => {
+        .catch((cause) => {
           // Falha pontual do motor não deve travar o ciclo — só pula o quadro.
+          avisarFalhaNoQuadro('detect', cause)
         })
         .finally(() => {
-          processingRef.current = false
+          // Se o cão de guarda já abandonou este quadro, outro pode estar em
+          // voo — liberar aqui atropelaria a exclusividade do quadro atual.
+          if (geracao === processingGenerationRef.current) processingRef.current = false
         })
     }
 
@@ -348,6 +481,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
     mode,
     targetFps,
     candidateLossToleranceMs,
+    watchdogMs,
     thresholds,
     sampleFaceImageData,
     scheduleFrame,

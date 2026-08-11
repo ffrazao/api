@@ -135,18 +135,85 @@ describe('computeLuminance / computeSharpness (§08.10 — Canvas 2D/ImageData)'
 describe('estimateStability (§10.13)', () => {
   const box: BoundingBox = { x: 250, y: 150, width: 140, height: 140 }
 
-  it('não penaliza o primeiro frame do ciclo (sem frame anterior para comparar)', () => {
-    expect(estimateStability(box, null, FRAME)).toBe(true)
+  /** Constrói uma sequência aplicando deslocamentos/escalas sucessivas a partir de uma caixa base. */
+  function sequencia(base: BoundingBox, passos: { dx?: number; dy?: number; escala?: number }[]): BoundingBox[] {
+    let atual = base
+    return passos.map(({ dx = 0, dy = 0, escala = 1 }) => {
+      const width = atual.width * escala
+      const height = atual.height * escala
+      atual = {
+        x: atual.x + dx + (atual.width - width) / 2,
+        y: atual.y + dy + (atual.height - height) / 2,
+        width,
+        height,
+      }
+      return atual
+    })
+  }
+
+  it('não penaliza o primeiro frame do ciclo (sem histórico para comparar)', () => {
+    expect(estimateStability(box, [], FRAME)).toBe(true)
   })
 
   it('tolera um pequeno movimento natural entre frames', () => {
-    const previous: BoundingBox = { x: 252, y: 151, width: 141, height: 139 }
-    expect(estimateStability(box, previous, FRAME)).toBe(true)
+    expect(estimateStability(box, [{ x: 252, y: 151, width: 141, height: 139 }], FRAME)).toBe(true)
   })
 
   it('reprova um salto grande de posição entre frames consecutivos', () => {
-    const previous: BoundingBox = { x: 60, y: 40, width: 140, height: 140 }
-    expect(estimateStability(box, previous, FRAME)).toBe(false)
+    expect(estimateStability(box, [{ x: 60, y: 40, width: 140, height: 140 }], FRAME)).toBe(false)
+  })
+
+  /**
+   * Números reais medidos a 12fps contra rosto de verdade, pessoa quase parada:
+   * variação linear de escala com mediana 0,011 e pior quadro 0,082; deslocamento
+   * do centro com pior quadro 0,015 (limite 0,08). O critério tem que aprovar
+   * isso com folga — era exatamente aqui que ele reprovava antes, porque media
+   * ÁREA (os mesmos quadros davam até 0,178) e decidia por quadro isolado.
+   */
+  it('aprova o tremor real do detector medido com a pessoa parada, inclusive no pior quadro', () => {
+    const historico = sequencia(box, [
+      { dx: 1.2, dy: -0.8, escala: 1.011 },
+      { dx: -0.9, dy: 1.1, escala: 0.989 },
+      { dx: 1.4, dy: 0.6, escala: 1.032 },
+    ])
+    const pior = sequencia(historico[historico.length - 1], [{ dx: 2.4, dy: -1.6, escala: 1.082 }])[0]
+    expect(estimateStability(pior, historico, FRAME)).toBe(true)
+  })
+
+  it('não deixa um único quadro de pico derrubar a estabilidade quando o resto está parado', () => {
+    const historico = sequencia(box, [{ escala: 1.005 }, { escala: 0.997 }, { escala: 1.004 }])
+    // Pico isolado de 22% num quadro só: a média de 3 pares o dilui.
+    const pico = sequencia(historico[historico.length - 1], [{ escala: 1.22 }])[0]
+    expect(estimateStability(pico, historico, FRAME)).toBe(true)
+  })
+
+  it('continua reprovando movimento real sustentado — aproximar-se da câmera quadro após quadro', () => {
+    const historico = sequencia(box, [{ escala: 1.2 }, { escala: 1.2 }, { escala: 1.2 }])
+    const seguinte = sequencia(historico[historico.length - 1], [{ escala: 1.2 }])[0]
+    expect(estimateStability(seguinte, historico, FRAME)).toBe(false)
+  })
+
+  /**
+   * Uma rotação pura de cabeça é assunto do critério `pose`, não de
+   * `estabilidade`: girar o rosto quase não move o centro da caixa. O que
+   * `estabilidade` tem que pegar é quem sai de posição — vira a cabeça e
+   * acompanha com o corpo, se levanta, anda para o lado.
+   */
+  it('continua reprovando movimento real sustentado — sair de posição, com a caixa escorregando de lado', () => {
+    const historico = sequencia(box, [
+      { dx: 36, escala: 0.96 },
+      { dx: 38, escala: 0.95 },
+      { dx: 40, escala: 0.94 },
+    ])
+    const seguinte = sequencia(historico[historico.length - 1], [{ dx: 42, escala: 0.93 }])[0]
+    expect(estimateStability(seguinte, historico, FRAME)).toBe(false)
+  })
+
+  it('a média móvel não esconde movimento que já dura a janela inteira', () => {
+    // Todos os pares acima do limite: reprova sem depender de um quadro extremo.
+    const historico = sequencia(box, [{ escala: 1.18 }, { escala: 1.18 }, { escala: 1.18 }])
+    const seguinte = sequencia(historico[historico.length - 1], [{ escala: 1.18 }])[0]
+    expect(estimateStability(seguinte, historico, FRAME)).toBe(false)
   })
 })
 
@@ -157,7 +224,7 @@ describe('evaluateQuality — combinação dos 7 critérios (§06.1, §08.10)', 
       landmarks: frontalLandmarks(),
       frame: FRAME,
       faceImage: checkerboardImage(20, 20),
-      previousBox: null,
+      recentBoxes: [],
     })
     expect(quality.aprovada).toBe(true)
     expect(quality.criteria).toEqual({
@@ -177,7 +244,7 @@ describe('evaluateQuality — combinação dos 7 critérios (§06.1, §08.10)', 
       landmarks: turnedLandmarks(),
       frame: FRAME,
       faceImage: checkerboardImage(20, 20),
-      previousBox: null,
+      recentBoxes: [],
     })
     expect(quality.aprovada).toBe(false)
     expect(quality.criteria.pose).toBe(false)
@@ -190,7 +257,7 @@ describe('evaluateQuality — combinação dos 7 critérios (§06.1, §08.10)', 
       landmarks: frontalLandmarks(),
       frame: FRAME,
       faceImage: solidColorImage(20, 20, [5, 5, 5]),
-      previousBox: null,
+      recentBoxes: [],
     })
     expect(quality.aprovada).toBe(false)
     expect(quality.criteria.nitidez).toBe(false)
