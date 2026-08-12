@@ -23,6 +23,12 @@ export interface FaceDetector {
   loadModels(modelsUrl: string): Promise<void>
   /** Detecta faces (com landmarks) em um frame. Array vazio = nenhuma face. */
   detect(input: FaceDetectionInput): Promise<DetectedFace[]>
+  /**
+   * Aquecimento opcional do motor (§01 — não bloqueio): paga adiantado o custo
+   * que só a PRIMEIRA inferência tem. Idempotente e sem efeito observável —
+   * nunca alimenta a máquina de estados. Implementações de teste podem omitir.
+   */
+  warmUp?(): Promise<void>
 }
 
 /**
@@ -58,11 +64,55 @@ function loadFaceApiModels(modelsUrl: string): Promise<void> {
   return memoizado
 }
 
+/**
+ * Aquecimento em andamento/concluído. Vive no MÓDULO pelo mesmo motivo do cache
+ * de modelos acima: o que está sendo aquecido são as redes singleton da própria
+ * face-api.js, então aquecer uma vez serve para qualquer instância do componente.
+ */
+let aquecimento: Promise<void> | null = null
+
+/**
+ * Compila os shaders WebGL antes de a detecção "de verdade" valer.
+ *
+ * A primeira inferência de cada carga de página custa uma ordem de grandeza a
+ * mais que as seguintes (compilação de shaders + alocação de texturas), e esse
+ * custo é pago na THREAD PRINCIPAL — era ele que congelava a interface bem no
+ * início do ciclo, quando o usuário já está sendo orientado a se posicionar.
+ * Aqui esse custo é pago cedo, sobre um canvas descartável: nenhuma face sai
+ * daqui, nada é despachado, nada aparece na tela.
+ */
+function warmUpFaceApi(): Promise<void> {
+  aquecimento ??= (async () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 320
+    canvas.height = 240
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      // Cinza liso: nunca produz detecção — só faz os shaders existirem.
+      ctx.fillStyle = '#808080'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
+
+    await faceapi.detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions())
+    // O passo acima não aquece a rede de landmarks: sem face detectada, ela não
+    // chega a rodar. Sem isto, a primeira face real ainda pagaria essa compilação.
+    await faceapi.nets.faceLandmark68Net.detectLandmarks(canvas)
+  })().catch(() => {
+    // Aquecimento é melhor-esforço: falhar aqui não pode atrapalhar a detecção
+    // real, que roda pelo seu próprio caminho e tem o próprio tratamento de erro.
+  })
+  return aquecimento
+}
+
 /** Adaptador real, usado em produção — carrega TinyFaceDetector + 68 landmarks. */
 export function createFaceApiDetector(): FaceDetector {
   return {
     loadModels(modelsUrl: string) {
       return loadFaceApiModels(modelsUrl)
+    },
+
+    warmUp() {
+      return warmUpFaceApi()
     },
 
     async detect(input: FaceDetectionInput): Promise<DetectedFace[]> {

@@ -498,3 +498,201 @@ describe('useFaceDetection — Face Lock: perda transitória mantém, perda perm
     expect(result.current.detection.visibleFaces).toHaveLength(0)
   })
 })
+
+describe('useFaceDetection — aquecimento do motor (§01)', () => {
+  it('segura os quadros reais até o aquecimento terminar, sem mexer em estado nem em mensagem', async () => {
+    const face: DetectedFace = { box: centeredBox(), landmarks: frontalLandmarks() }
+    const scheduler = createManualScheduler()
+    const clock = createManualClock()
+    const detect = vi.fn().mockResolvedValue([face])
+
+    let concluirAquecimento!: () => void
+    const aquecimento = new Promise<void>((resolve) => {
+      concluirAquecimento = resolve
+    })
+    const detector: FaceDetector = {
+      loadModels: vi.fn().mockResolvedValue(undefined),
+      warmUp: vi.fn().mockReturnValue(aquecimento),
+      detect,
+    }
+
+    const { result } = renderHook(() =>
+      useMachineWithDetection({
+        videoElement: fakeVideo(),
+        detector,
+        sampleFaceImageData: () => sharpWellLitImage(),
+        scheduleFrame: scheduler.scheduleFrame,
+        cancelFrame: scheduler.cancelFrame,
+        now: clock.now,
+      }),
+    )
+
+    await readyAndDetecting(result)
+
+    // Aquecendo: o quadro real esperaria na fila atrás dele e voltaria caro.
+    clock.advance(200)
+    await act(async () => {
+      scheduler.tick()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(detect).not.toHaveBeenCalled()
+    // §01: nada disso é observável — o ciclo segue em DETECTANDO como sempre.
+    expect(result.current.context.state).toBe('DETECTANDO')
+
+    await act(async () => {
+      concluirAquecimento()
+      await aquecimento
+    })
+
+    clock.advance(200)
+    await act(async () => {
+      scheduler.tick()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(detect).toHaveBeenCalledTimes(1)
+  })
+
+  it('não espera nada quando o detector não oferece aquecimento', async () => {
+    const face: DetectedFace = { box: centeredBox(), landmarks: frontalLandmarks() }
+    const detect = vi.fn().mockResolvedValue([face])
+    const detector = createFakeDetector(detect) // sem warmUp
+    const scheduler = createManualScheduler()
+    const clock = createManualClock()
+
+    const { result } = renderHook(() =>
+      useMachineWithDetection({
+        videoElement: fakeVideo(),
+        detector,
+        sampleFaceImageData: () => sharpWellLitImage(),
+        scheduleFrame: scheduler.scheduleFrame,
+        cancelFrame: scheduler.cancelFrame,
+        now: clock.now,
+      }),
+    )
+
+    await readyAndDetecting(result)
+    await act(async () => {
+      scheduler.tick()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(detect).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useFaceDetection — throttling dinâmico do loop (§01, crit. "Processamento Otimizado")', () => {
+  /**
+   * A inferência roda na thread principal. Com intervalo fixo, um motor caro
+   * fazia o loop reentrar assim que o quadro anterior terminava, sem deixar a
+   * thread respirar — era isso que congelava cronômetro, cliques e animações
+   * junto com a detecção. O intervalo tem que crescer com o custo real medido
+   * e voltar sozinho ao normal quando os quadros baratearem.
+   */
+  it('afasta os quadros depois de um caro e volta ao ritmo normal quando barateiam', async () => {
+    const face: DetectedFace = { box: centeredBox(), landmarks: frontalLandmarks() }
+    const scheduler = createManualScheduler()
+    const clock = createManualClock()
+
+    // O custo é simulado adiantando o relógio DURANTE a detecção — é o que um
+    // quadro caro faz de verdade: quando a promessa assenta, o tempo já passou.
+    let custoDoQuadroMs = 0
+    const detect = vi.fn(async () => {
+      clock.advance(custoDoQuadroMs)
+      return [face]
+    })
+    const detector = createFakeDetector(detect)
+
+    const { result } = renderHook(() =>
+      useMachineWithDetection({
+        videoElement: fakeVideo(),
+        detector,
+        sampleFaceImageData: () => sharpWellLitImage(),
+        scheduleFrame: scheduler.scheduleFrame,
+        cancelFrame: scheduler.cancelFrame,
+        now: clock.now,
+      }),
+    )
+
+    const quadro = async () => {
+      await act(async () => {
+        scheduler.tick()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    await readyAndDetecting(result)
+
+    // Ritmo normal (12fps ≈ 83ms entre quadros): um quadro barato processa.
+    await quadro()
+    expect(detect).toHaveBeenCalledTimes(1)
+
+    // Quadro caro: 200ms de thread ocupada.
+    custoDoQuadroMs = 200
+    clock.advance(100)
+    await quadro()
+    expect(detect).toHaveBeenCalledTimes(2)
+
+    // A partir daqui o loop precisa dar folga proporcional (200ms × 3 = 600ms
+    // entre inícios). Com o intervalo fixo antigo, este quadro já entraria.
+    custoDoQuadroMs = 0
+    clock.advance(350)
+    await quadro()
+    expect(detect).toHaveBeenCalledTimes(2)
+
+    // Passada a folga, volta a processar normalmente.
+    clock.advance(200)
+    await quadro()
+    expect(detect).toHaveBeenCalledTimes(3)
+
+    // Quadros baratos normalizam o intervalo — sem ficar preso no modo lento.
+    for (let i = 0; i < 12; i++) {
+      clock.advance(700)
+      await quadro()
+    }
+    const chamadasAteAqui = detect.mock.calls.length
+
+    clock.advance(90) // pouco acima dos ~83ms do alvo de 12fps
+    await quadro()
+    expect(detect).toHaveBeenCalledTimes(chamadasAteAqui + 1)
+  })
+
+  it('não afasta os quadros quando o motor está barato', async () => {
+    const face: DetectedFace = { box: centeredBox(), landmarks: frontalLandmarks() }
+    const scheduler = createManualScheduler()
+    const clock = createManualClock()
+    const detect = vi.fn(async () => {
+      clock.advance(20) // rápido: bem abaixo do limiar de quadro caro
+      return [face]
+    })
+    // Fora do callback de render: um detector novo a cada render recarregaria
+    // os modelos em laço (ele entra nas dependências do efeito de carga).
+    const detector = createFakeDetector(detect)
+
+    const { result } = renderHook(() =>
+      useMachineWithDetection({
+        videoElement: fakeVideo(),
+        detector,
+        sampleFaceImageData: () => sharpWellLitImage(),
+        scheduleFrame: scheduler.scheduleFrame,
+        cancelFrame: scheduler.cancelFrame,
+        now: clock.now,
+      }),
+    )
+
+    await readyAndDetecting(result)
+
+    for (let i = 1; i <= 4; i++) {
+      await act(async () => {
+        scheduler.tick()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(detect).toHaveBeenCalledTimes(i)
+      clock.advance(90)
+    }
+  })
+})

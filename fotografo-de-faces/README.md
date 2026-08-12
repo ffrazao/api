@@ -131,6 +131,31 @@ adapta ao contêiner do hospedeiro.
 consulta estado — não existe forma de forçar uma transição ou capturar fora do
 estado `PRONTO`.
 
+## Limitações conhecidas
+
+**Inferência na thread principal.** A inferência da `face-api.js` roda na thread
+principal do navegador. O componente já mitiga os efeitos disso — aquece o motor
+antes de a detecção começar a valer e espaça os quadros proporcionalmente ao
+custo real medido, devolvendo tempo de thread para a interface — mas, em
+máquinas fracas ou sem aceleração por GPU, quadros caros ainda concorrem com o
+resto da página. Mover a inferência para um Web Worker é a otimização natural
+seguinte, e continua em aberto: exigiria uma revisão de arquitetura do motor de
+detecção, fora do escopo até aqui.
+
+**Posicionamento das molduras no modo quiosque.** No quiosque, cada face
+visível ganha sua própria moldura, posicionada a partir da caixa devolvida pelo
+detector. Essa conversão vai dos pixels intrínsecos do vídeo para porcentagens
+do contêiner por escala uniforme, o que é uma aproximação: o preview é exibido
+com `object-fit: cover`, que corta as bordas quando a proporção do contêiner do
+hospedeiro difere da proporção da webcam. Em proporções muito diferentes, a
+moldura pode aparecer levemente deslocada em relação ao rosto na tela.
+
+Vale ser preciso sobre o alcance disso: é uma imprecisão **visual, da posição da
+moldura desenhada sobre o preview**. A detecção facial em si, a avaliação de
+qualidade e o recorte da fotografia capturada trabalham nas coordenadas
+intrínsecas do vídeo e não são afetados — a fotografia produzida sai enquadrada
+corretamente mesmo quando a moldura na tela aparenta estar deslocada.
+
 ## Desenvolvimento
 
 ```bash

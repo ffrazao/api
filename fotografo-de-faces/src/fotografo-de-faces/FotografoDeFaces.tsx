@@ -147,14 +147,37 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
     reviewFor,
   })
 
-  // Cronômetro regressivo (§07.5, §10.3, §14.6): a cada segundo, decrementa e
-  // reagenda — para sozinho assim que a máquina sair de CRONOMETRANDO.
+  // Cronômetro regressivo (§04.3, §07.5, §10.3, §14.6).
+  //
+  // A contagem é derivada de um PRAZO em tempo real, nunca de um acumulado de
+  // ticks. A diferença aparece quando a thread principal trava: a inferência da
+  // face-api.js roda nela, e um quadro caro (a primeira inferência, que compila
+  // os shaders, custa segundos) prende junto todos os `setTimeout`. Decrementando
+  // de 1 em 1, cada travada esticava a contagem — um cronômetro de 3s levava
+  // 17s reais, e a interface ficava parada num número por vários segundos sem
+  // nunca capturar. Contra o prazo, uma travada só faz a contagem pular direto
+  // para o valor certo (inclusive para 0, disparando a captura na hora).
+  const countdownDeadlineRef = useRef<number | null>(null)
   useEffect(() => {
-    if (snapshot.state !== 'CRONOMETRANDO' || !snapshot.timer) return
-    const remainingSeconds = snapshot.timer.remainingSeconds
-    const timeoutId = setTimeout(() => {
-      dispatch({ type: 'TIMER_TICK', remainingSeconds: remainingSeconds - 1 })
-    }, 1000)
+    if (snapshot.state !== 'CRONOMETRANDO' || !snapshot.timer) {
+      // Sair de CRONOMETRANDO encerra o prazo: a próxima contagem (§06.5 —
+      // condição perdida e recuperada) começa inteira, do zero.
+      countdownDeadlineRef.current = null
+      return
+    }
+
+    const { remainingSeconds } = snapshot.timer
+    const deadline = countdownDeadlineRef.current ?? Date.now() + remainingSeconds * 1000
+    countdownDeadlineRef.current = deadline
+
+    // Próxima virada de segundo medida contra o prazo — nunca "daqui a 1s".
+    const proximaViradaEm = deadline - (remainingSeconds - 1) * 1000 - Date.now()
+    const timeoutId = setTimeout(
+      () => {
+        dispatch({ type: 'TIMER_TICK', remainingSeconds: Math.ceil((deadline - Date.now()) / 1000) })
+      },
+      Math.max(0, proximaViradaEm),
+    )
     return () => clearTimeout(timeoutId)
   }, [snapshot.state, snapshot.timer, dispatch])
 

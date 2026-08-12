@@ -42,6 +42,66 @@ function avisarFalhaNoQuadro(fase: 'detect' | 'processamento', cause: unknown): 
   )
 }
 
+/**
+ * Acima disto, um quadro custou mais que um segundo inteiro de cronômetro.
+ * Não é um limite operacional (nada é abortado por causa dele) — é só o ponto
+ * a partir do qual vale avisar quem estiver desenvolvendo.
+ */
+const QUADRO_LENTO_MS = 1000
+
+/**
+ * Observabilidade de quadro lento — NÃO altera comportamento.
+ *
+ * A inferência da face-api.js roda na THREAD PRINCIPAL. Quando um quadro passa
+ * de ~1s (backend caindo para `cpu` em vez de `webgl`, primeira inferência
+ * compilando shaders, máquina sobrecarregada), ele prende junto todo o resto da
+ * página: `setTimeout`, renderização do React e, portanto, o cronômetro
+ * regressivo e o botão de captura. O sintoma que isso produz — contagem parada
+ * num número por vários segundos, sem capturar e sem reprovar — é
+ * indistinguível de um defeito de estado se ninguém estiver medindo, então o
+ * custo real do quadro fica registrado aqui.
+ */
+/** Acima disto o quadro é caro o bastante para valer a pena ceder a thread. */
+const QUADRO_CARO_MS = 100
+/**
+ * Quantas vezes o custo do quadro caro vira intervalo até o próximo. Como o
+ * intervalo é medido de início a início, o fator 3 deixa ~2/3 do tempo com a
+ * thread livre para cliques, animações e o cronômetro regressivo.
+ */
+const FATOR_DE_FOLGA = 3
+/** Teto do intervalo adaptativo: nem o quadro mais caro pode parar a detecção. */
+const INTERVALO_MAXIMO_MS = 1000
+/** Abaixo desta distância do alvo, a normalização assenta de vez (evita rastejar). */
+const TOLERANCIA_DE_NORMALIZACAO_MS = 10
+
+/**
+ * Intervalo até o próximo quadro, em função do que o último custou (§01 — não
+ * bloqueio; crit. "Processamento Otimizado").
+ *
+ * Um intervalo fixo assume que o quadro é barato. Quando o motor está caro
+ * (backend `cpu`, máquina fraca, quadro atípico), a taxa fixa faz o loop
+ * reentrar assim que o anterior termina e a thread principal nunca respira —
+ * é o que fazia a interface inteira congelar junto com a inferência. Aqui o
+ * loop cede espaço proporcional ao custo real e volta sozinho ao ritmo normal
+ * assim que os quadros baratearem, sem nunca ficar preso no modo lento.
+ */
+function proximoIntervalo(atual: number, custoMs: number, alvo: number): number {
+  if (custoMs > QUADRO_CARO_MS) {
+    return Math.min(INTERVALO_MAXIMO_MS, Math.max(atual, custoMs * FATOR_DE_FOLGA))
+  }
+  // Barateou: desce metade da distância até o alvo a cada quadro rápido.
+  const proximo = atual - (atual - alvo) / 2
+  return proximo - alvo < TOLERANCIA_DE_NORMALIZACAO_MS ? alvo : proximo
+}
+
+function avisarQuadroLento(duracaoMs: number): void {
+  if (!import.meta.env.DEV) return
+  console.warn(
+    `[FotografoDeFaces] quadro de detecção custou ${Math.round(duracaoMs)}ms na thread principal. ` +
+      'Acima de ~1s a página inteira congela junto (cronômetro, botões, animações) enquanto o motor trabalha.',
+  )
+}
+
 /** Uma face atualmente visível no quadro, para renderização (§07.9, §09.6) — não é usada pela máquina de estados. */
 export interface VisibleFace {
   id: string
@@ -184,6 +244,13 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
   const [visibleFaces, setVisibleFaces] = useState<VisibleFace[]>([])
   const [candidateBox, setCandidateBox] = useState<BoundingBox | null>(null)
 
+  /**
+   * Aquecimento do motor em andamento (ver faceDetector.ts). Só fica `true`
+   * entre o início e o fim de um `warmUp()` de verdade — detectores sem
+   * `warmUp` (testes, implementações alternativas) nunca param o loop aqui.
+   */
+  const aquecimentoPendenteRef = useRef(false)
+
   const isMountedRef = useRef(true)
   useEffect(() => {
     isMountedRef.current = true
@@ -202,7 +269,19 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
     detector
       .loadModels(modelsUrl)
       .then(() => {
-        if (!cancelled) setStatus('ready')
+        if (cancelled) return
+        setStatus('ready')
+        // Aquecimento invisível (§01): nada aqui muda estado, mensagem ou tela.
+        // O loop pula os quadros enquanto ele estiver em andamento (ver `tick`)
+        // — sem isso o primeiro quadro real entra na fila ATRÁS do aquecimento
+        // e paga a compilação do mesmo jeito, que é o que se quer evitar.
+        const aquecendo = detector.warmUp?.()
+        if (aquecendo) {
+          aquecimentoPendenteRef.current = true
+          void aquecendo.finally(() => {
+            aquecimentoPendenteRef.current = false
+          })
+        }
       })
       .catch(() => {
         if (!cancelled) setStatus('error')
@@ -237,6 +316,17 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
   // -Infinity garante que o primeiro quadro do ciclo seja sempre processado,
   // mesmo quando o relógio injetado (testes) começa em 0.
   const lastProcessedAtRef = useRef(-Infinity)
+  /**
+   * Intervalo vigente entre quadros, adaptado ao custo real do motor (ver
+   * `proximoIntervalo`). `null` = ainda no alvo de `targetFps`.
+   *
+   * Precisa ser um ref, e não uma variável do efeito: o efeito reexecuta a cada
+   * render em que alguma opção injetada não seja referencialmente estável, e a
+   * folga aprendida não pode ser esquecida só porque o React renderizou de novo
+   * — o motor continua tão caro quanto era. Zera junto com o resto do ciclo
+   * quando a detecção de fato para (ver ramo `!active`).
+   */
+  const intervaloRef = useRef<number | null>(null)
 
   const active = status === 'ready' && value === null && ACTIVE_STATES.has(state) && videoElement !== null
 
@@ -264,6 +354,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
       hasCandidateRef.current = false
       recentBoxesRef.current = []
       noFaceStreakStartRef.current = null
+      intervaloRef.current = null
       updateVisibleFaces([])
       return
     }
@@ -425,12 +516,18 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
         )
       }
 
-      if (nowMs - lastProcessedAtRef.current < frameIntervalMs) return // limita a taxa (crit. 2).
+      if (nowMs - lastProcessedAtRef.current < (intervaloRef.current ?? frameIntervalMs)) return // limita a taxa (crit. 2).
 
       // Entregar ao motor um `<video>` sem quadro decodificado trava a detecção
       // para sempre (ver HAVE_CURRENT_DATA). Só pula o quadro: assim que a
       // câmera decodificar o primeiro frame, o ciclo segue normalmente.
       if (!isVideoReadyForDetection(videoElement)) return
+
+      // Aquecimento em andamento: um quadro real agora só ficaria na fila atrás
+      // dele, na mesma thread, e voltaria caro. Também é só pular o quadro — o
+      // aquecimento sempre assenta (o adaptador engole falhas), então o ciclo
+      // não pode ficar parado aqui.
+      if (aquecimentoPendenteRef.current) return
 
       lastProcessedAtRef.current = nowMs
 
@@ -440,6 +537,12 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
       detector
         .detect(videoElement)
         .then((faces) => {
+          // Custo real do quadro, medido antes de qualquer descarte: mesmo um
+          // quadro abandonado pelo cão de guarda consumiu a thread e precisa
+          // pesar na folga do próximo.
+          const custoMs = now() - nowMs
+          intervaloRef.current = proximoIntervalo(intervaloRef.current ?? frameIntervalMs, custoMs, frameIntervalMs)
+          if (custoMs >= QUADRO_LENTO_MS) avisarQuadroLento(custoMs)
           if (encerrado || !isMountedRef.current) return
           if (geracao !== processingGenerationRef.current) return // quadro já abandonado pelo cão de guarda.
           // O try/catch interno não muda o que acontece (o `.catch` de fora já
