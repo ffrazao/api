@@ -83,3 +83,13 @@ determinística antes da correção:
   reduziu a primeira inferência de ~4s para ~0,46s nas medições — e o
   **throttling dinâmico** do loop, que espaça os quadros proporcionalmente ao
   custo medido e devolve tempo de thread para a interface.
+
+<!--
+  Ainda não existe tag git para esta versão, então o link abaixo aponta para o
+  diretório do componente no repositório — o alvo mais específico que de fato
+  existe hoje. Quando a primeira release for marcada (`git tag`), troque-o pela
+  tag correspondente, e passe a usar links de comparação entre versões nas
+  entradas seguintes.
+-->
+
+[1.0.0-rc.1]: https://github.com/ffrazao/api/tree/main/fotografo-de-faces
