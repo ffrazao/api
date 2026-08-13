@@ -14,8 +14,9 @@
  * vem sempre do contêiner da aplicação hospedeira (ver FotografoDeFaces.styles.ts).
  */
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import type { ForwardedRef } from 'react'
+import type { ForwardedRef, RefObject } from 'react'
 import * as S from './FotografoDeFaces.styles'
+import type { DisplaySize } from './presentation'
 import {
   FACE_FRAME_HEX,
   boxToPercentagePosition,
@@ -71,6 +72,44 @@ export interface FotografoDeFacesHandle {
   getQuality: () => Quality | null
   /** §16.9 — estado do cronômetro quando houver um ativo. */
   getTimer: () => TimerState | null
+}
+
+/**
+ * Tamanho atual do elemento em pixels CSS, acompanhando redimensionamentos.
+ *
+ * É o dado que faltava para posicionar as molduras corretamente: sob
+ * `object-fit: cover` a caixa da face só pode ser mapeada para a tela sabendo a
+ * proporção do contêiner, e §20.10 diz que ela é decidida pela aplicação
+ * hospedeira — pode mudar a qualquer momento (janela redimensionada, tela cheia,
+ * layout responsivo), sem passar por prop nenhuma.
+ *
+ * O `ResizeObserver` é opcional de propósito: onde ele não existir (jsdom nos
+ * testes, navegadores antigos) o tamanho é medido uma vez na montagem e o
+ * componente segue funcionando — só não reage a redimensionamento.
+ */
+function useDisplaySize(elementRef: RefObject<HTMLElement | null>): DisplaySize {
+  const [size, setSize] = useState<DisplaySize>({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const element = elementRef.current
+    if (!element) return
+
+    const medir = () => {
+      const { width, height } = element.getBoundingClientRect()
+      // Só troca o objeto quando o tamanho muda de fato — senão cada quadro do
+      // observador viraria um render novo do componente inteiro.
+      setSize((atual) => (atual.width === width && atual.height === height ? atual : { width, height }))
+    }
+
+    medir()
+    if (typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(medir)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [elementRef])
+
+  return size
 }
 
 function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<FotografoDeFacesHandle>) {
@@ -270,6 +309,9 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
   // ninguém em cena — ex.: FOTOGRAFIA_PRONTA/ERRO) usa a moldura única de sempre.
   const showMultiFaceFrames = mode === 'quiosque' && visibleFaces.length > 0
   const videoFrameSize = { width: videoRef.current?.videoWidth ?? 0, height: videoRef.current?.videoHeight ?? 0 }
+  // O <video> é o elemento que carrega o `object-fit: cover`, então é o tamanho
+  // dele — não o do Root — que define o mapeamento das molduras (§07.9, §09.6).
+  const displaySize = useDisplaySize(videoRef)
   const showButton = shouldShowCaptureButton(autoCaptureAfter, snapshot.state)
   const buttonEnabled = isCaptureButtonEnabled(snapshot.state)
 
@@ -299,7 +341,7 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
                     data-color={color}
                     data-locked={face.locked}
                     $color={FACE_FRAME_HEX[color]}
-                    style={boxToPercentagePosition(face.box, videoFrameSize)}
+                    style={boxToPercentagePosition(face.box, videoFrameSize, displaySize)}
                   />
                 )
               })

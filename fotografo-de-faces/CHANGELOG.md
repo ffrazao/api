@@ -83,6 +83,26 @@ determinística antes da correção:
   reduziu a primeira inferência de ~4s para ~0,46s nas medições — e o
   **throttling dinâmico** do loop, que espaça os quadros proporcionalmente ao
   custo medido e devolve tempo de thread para a interface.
+- **Disputa de CPU na página Docs do Storybook.** A página de documentação monta
+  todas as histórias de uma vez, e os detectores simultâneos saturavam a thread
+  principal: cada quadro passou a custar de 2,3s a 10,4s, o cão de guarda do
+  loop chegou a abandonar quadros e nenhuma instância saiu de `DETECTANDO` em
+  45s — enquanto a mesma história sozinha chegava a `FOTOGRAFIA_PRONTA` em ~8s.
+  A suspeita inicial de disputa pelo dispositivo não se confirmou na medição:
+  todas as chamadas de `getUserMedia()` foram concedidas, com tracks ativas. A
+  página Docs passou a manter no máximo uma instância viva por vez, sob ativação
+  explícita. Vale só para a documentação — o componente publicado não muda.
+- **Precisão do posicionamento das molduras no modo quiosque.** A conversão da
+  caixa da face para a tela usava escala uniforme, ignorando que o preview é
+  exibido com `object-fit: cover`, que recorta um dos eixos quando a proporção do
+  contêiner difere da proporção nativa da câmera. Medido no navegador, com
+  câmera 640×480: num contêiner de 960×270 a moldura saía 50px abaixo do rosto e
+  com 112px de altura em vez de 300px; num de 300×600 saía 84px à direita e com
+  94px de largura em vez de 250px. A conversão passou a atravessar o mapeamento
+  geométrico real do `cover` — escala pelo maior fator e desconto do excedente do
+  eixo cortado —, usando o tamanho do contêiner observado em tempo de
+  renderização (`ResizeObserver`), já que §20.10 deixa esse tamanho na mão da
+  aplicação hospedeira. O desvio medido nos mesmos cenários caiu a zero.
 
 <!--
   Ainda não existe tag git para esta versão, então o link abaixo aponta para o

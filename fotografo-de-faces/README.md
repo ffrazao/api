@@ -142,19 +142,19 @@ resto da página. Mover a inferência para um Web Worker é a otimização natur
 seguinte, e continua em aberto: exigiria uma revisão de arquitetura do motor de
 detecção, fora do escopo até aqui.
 
-**Posicionamento das molduras no modo quiosque.** No quiosque, cada face
-visível ganha sua própria moldura, posicionada a partir da caixa devolvida pelo
-detector. Essa conversão vai dos pixels intrínsecos do vídeo para porcentagens
-do contêiner por escala uniforme, o que é uma aproximação: o preview é exibido
-com `object-fit: cover`, que corta as bordas quando a proporção do contêiner do
-hospedeiro difere da proporção da webcam. Em proporções muito diferentes, a
-moldura pode aparecer levemente deslocada em relação ao rosto na tela.
+**Molduras em navegadores sem `ResizeObserver`.** As molduras do modo quiosque
+são posicionadas atravessando o mapeamento geométrico de `object-fit: cover`, o
+que exige saber o tamanho do contêiner em tempo de renderização — obtido por um
+`ResizeObserver` sobre o elemento de vídeo. Onde a API não existir (navegadores
+anteriores a 2020), o tamanho é medido uma vez na montagem: as molduras ficam
+corretas, mas param de acompanhar redimensionamentos posteriores do contêiner
+até que o componente volte a montar. Nos navegadores suportados pelo projeto a
+API está disponível, então o caso é residual.
 
-Vale ser preciso sobre o alcance disso: é uma imprecisão **visual, da posição da
-moldura desenhada sobre o preview**. A detecção facial em si, a avaliação de
-qualidade e o recorte da fotografia capturada trabalham nas coordenadas
-intrínsecas do vídeo e não são afetados — a fotografia produzida sai enquadrada
-corretamente mesmo quando a moldura na tela aparenta estar deslocada.
+Vale ser preciso sobre o alcance disso: seria uma imprecisão **visual, da
+posição da moldura desenhada sobre o preview**. A detecção facial em si, a
+avaliação de qualidade e o recorte da fotografia capturada trabalham nas
+coordenadas intrínsecas do vídeo e nunca dependem do tamanho do contêiner.
 
 ## Desenvolvimento
 

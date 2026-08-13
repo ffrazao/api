@@ -86,26 +86,54 @@ export function getVisibleFaceColor(locked: boolean, state: FotografoDeFacesStat
   return 'amarela'
 }
 
+/** Tamanho do contêiner em pixels CSS — o que o vídeo realmente ocupa na tela. */
+export interface DisplaySize {
+  width: number
+  height: number
+}
+
 /**
  * Converte uma caixa em pixels do vídeo (espaço intrínseco `videoWidth`/
- * `videoHeight`) numa posição em porcentagem do contêiner. É uma aproximação
- * por escala uniforme — o vídeo é exibido com `object-fit: cover`, que pode
- * cortar as bordas conforme a proporção do contêiner hospedeiro; posicionar
- * pixel-perfeito exigiria conhecer essa proporção em tempo de renderização.
- * Suficiente para posicionar aproximadamente as molduras do quiosque; uma
- * calibração mais fina fica para quando houver um contêiner real para testar.
+ * `videoHeight`) numa posição em porcentagem do contêiner, atravessando o
+ * mapeamento geométrico de `object-fit: cover` (§07.9, §09.6).
+ *
+ * `cover` escolhe a MAIOR das duas escalas necessárias para cobrir o contêiner,
+ * de modo que o vídeo transborde no eixo em que sobra conteúdo; o excedente é
+ * cortado meio a meio, porque `object-position` fica no padrão `50% 50%` (ver
+ * `Video` em FotografoDeFaces.styles.ts). Portanto:
+ *
+ *     escala   = max(larguraContêiner / larguraVídeo, alturaContêiner / alturaVídeo)
+ *     deslocaX = (larguraContêiner - larguraVídeo × escala) / 2   (≤ 0)
+ *     deslocaY = (alturaContêiner  - alturaVídeo  × escala) / 2   (≤ 0)
+ *
+ * A escala ingênua anterior (dividir a caixa pelo tamanho do vídeo) só acerta
+ * quando o contêiner tem exatamente a proporção da câmera; fora disso ela erra
+ * tanto o tamanho quanto a posição — num contêiner de 960×270 com câmera 640×480
+ * a moldura saía 50px abaixo do rosto e com 112px de altura em vez de 300px
+ * (medido no Chrome antes desta correção).
+ *
+ * A caixa devolvida pode ficar negativa ou passar de 100% — é exatamente o que
+ * deve acontecer quando a face está na parte do quadro que o `cover` cortou. O
+ * `overflow: hidden` do `VideoClip` corta a moldura no mesmo lugar em que corta
+ * o vídeo, então a moldura acompanha o rosto até sair de cena.
  */
 export function boxToPercentagePosition(
   box: BoundingBox,
   frame: FrameSize,
+  display: DisplaySize,
 ): { left: string; top: string; width: string; height: string } {
-  if (frame.width <= 0 || frame.height <= 0) {
+  if (frame.width <= 0 || frame.height <= 0 || display.width <= 0 || display.height <= 0) {
     return { left: '0%', top: '0%', width: '0%', height: '0%' }
   }
+
+  const scale = Math.max(display.width / frame.width, display.height / frame.height)
+  const offsetX = (display.width - frame.width * scale) / 2
+  const offsetY = (display.height - frame.height * scale) / 2
+
   return {
-    left: `${(box.x / frame.width) * 100}%`,
-    top: `${(box.y / frame.height) * 100}%`,
-    width: `${(box.width / frame.width) * 100}%`,
-    height: `${(box.height / frame.height) * 100}%`,
+    left: `${((box.x * scale + offsetX) / display.width) * 100}%`,
+    top: `${((box.y * scale + offsetY) / display.height) * 100}%`,
+    width: `${((box.width * scale) / display.width) * 100}%`,
+    height: `${((box.height * scale) / display.height) * 100}%`,
   }
 }

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Pacotes gerados por `npm pack` em testes locais de distribuição
+*.tgz
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

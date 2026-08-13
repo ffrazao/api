@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { FotografoDeFaces } from './FotografoDeFaces'
 import type { FotografoDeFacesProps } from './FotografoDeFaces'
@@ -71,10 +72,155 @@ function StatefulFotografoWrapper(props: SandboxProps) {
   )
 }
 
+/**
+ * Ativação exclusiva da câmera na página Docs — restrito ao Storybook.
+ *
+ * A página Docs (autodocs) monta TODAS as histórias deste arquivo de uma vez,
+ * e o template do Storybook ainda repete a primeira no bloco "Primary": são 8
+ * instâncias do FotografoDeFaces simultâneas na mesma aba.
+ *
+ * O que foi medido nesse cenário (Chrome headless, câmera USB real, página
+ * Docs completa por 45s):
+ *   - Câmera: as 8 chamadas de `getUserMedia()` foram TODAS concedidas, com
+ *     tracks `live` e quadros chegando nos 8 `<video>`. Nenhum NotReadableError,
+ *     nenhum erro de câmera no Console. O Chrome compartilha uma única captura
+ *     do dispositivo entre os clientes da mesma aba, então não há disputa de
+ *     hardware — a suspeita original não se confirmou.
+ *   - CPU: é aqui que a página quebra. Com as 8 instâncias, cada quadro de
+ *     detecção passou a custar de 2,3s a 10,4s na thread principal, o watchdog
+ *     do loop chegou a abandonar quadro por estouro dos 4s, e NENHUMA das
+ *     instâncias saiu de DETECTANDO em 45s. A mesma história sozinha
+ *     (`viewMode=story`) não emitiu um único aviso de custo de quadro e chegou
+ *     a FOTOGRAFIA_PRONTA em ~8s.
+ *
+ * Ou seja: 8 loops de face-api.js disputando uma thread principal inutilizam
+ * até a história que o leitor está olhando. A correção é manter no máximo UMA
+ * instância viva por vez na página Docs, sob ativação explícita.
+ *
+ * Nada disto vale fora da página Docs: em `viewMode=story` o decorator devolve
+ * a história intocada, e o componente publicado não é afetado de forma alguma.
+ */
+const inscritos = new Set<(idAtivo: number | null) => void>()
+let idAtivo: number | null = null
+let proximoId = 0
+
+function ativarExclusivo(id: number | null) {
+  idAtivo = id
+  inscritos.forEach((notificar) => notificar(idAtivo))
+}
+
+function CameraSobDemanda({ children }: { children: ReactNode }) {
+  const [id] = useState(() => ++proximoId)
+  const [ativo, setAtivo] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const notificar = (novoAtivo: number | null) => setAtivo(novoAtivo === id)
+    inscritos.add(notificar)
+    return () => {
+      inscritos.delete(notificar)
+    }
+  }, [id])
+
+  // Rolou para fora da tela: libera a câmera sozinho. Assim o leitor não deixa
+  // uma instância trabalhando lá em cima enquanto lê o resto da documentação.
+  //
+  // O desligamento só vale DEPOIS de a história ter aparecido na tela pelo
+  // menos uma vez. Sem essa guarda, o primeiro disparo do observador — que
+  // chega com `isIntersecting: false` quando a história ativada está abaixo da
+  // dobra — desmontava o componente no mesmo instante em que ele acabara de
+  // pedir a câmera. Isso foi observado de verdade: a ativação sem rolagem
+  // registrava a chamada de `getUserMedia()` e voltava ao placeholder, enquanto
+  // a mesma ativação com a história visível seguia até FOTOGRAFIA_PRONTA.
+  useEffect(() => {
+    if (!ativo) return
+    const alvo = containerRef.current
+    if (!alvo) return
+    let jaApareceu = false
+    const observador = new IntersectionObserver(
+      ([entrada]) => {
+        if (entrada.isIntersecting) {
+          jaApareceu = true
+          return
+        }
+        if (jaApareceu && idAtivo === id) ativarExclusivo(null)
+      },
+      { threshold: 0 },
+    )
+    observador.observe(alvo)
+    return () => observador.disconnect()
+  }, [ativo, id])
+
+  return (
+    <div ref={containerRef}>
+      {ativo ? (
+        children
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            width: 700,
+            height: 360,
+            borderRadius: 8,
+            border: '1px dashed #bbb',
+            background: '#fafafa',
+            color: '#444',
+            font: '13px/1.5 system-ui, sans-serif',
+            textAlign: 'center',
+          }}
+        >
+          <strong>Câmera desligada nesta história</strong>
+          <p style={{ margin: 0, maxWidth: 460 }}>
+            A página Docs monta as 7 histórias juntas. Rodar todos os detectores ao mesmo tempo
+            satura a thread principal e trava até a história em foco, então aqui só uma fica viva
+            por vez — ativar esta desliga a anterior.
+          </p>
+          <button
+            type="button"
+            onClick={() => ativarExclusivo(id)}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 6,
+              border: '1px solid #888',
+              background: '#fff',
+              cursor: 'pointer',
+              font: 'inherit',
+              fontWeight: 600,
+            }}
+          >
+            Ativar câmera nesta história
+          </button>
+          <span style={{ color: '#777' }}>
+            Abrir a história pela barra lateral roda a câmera normalmente, sem esta trava.
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const meta = {
   title: 'FotografoDeFaces/Sandbox',
   component: StatefulFotografoWrapper,
   tags: ['autodocs'],
+  /**
+   * Só a página Docs recebe a trava (§ ver comentário de CameraSobDemanda). Em
+   * `viewMode=story` a história é renderizada exatamente como antes.
+   */
+  decorators: [
+    (Story, context) =>
+      context.viewMode === 'docs' ? (
+        <CameraSobDemanda>
+          <Story />
+        </CameraSobDemanda>
+      ) : (
+        <Story />
+      ),
+  ],
   parameters: {
     docs: {
       description: {
@@ -90,6 +236,14 @@ const meta = {
           '',
           '**Modelos de IA:** carregados de `/models` (servido de `public/`), sem nenhuma requisição',
           'externa. Se ainda não os baixou, rode `npm run download:models`.',
+          '',
+          '**Nesta página de documentação, a câmera começa desligada em todas as histórias.** Esta',
+          'página monta as 7 de uma vez, e 7 detectores simultâneos saturam a thread principal a',
+          'ponto de travar até a história que você está olhando — medido em ~2,3s a 10,4s por quadro',
+          'de detecção, contra nenhum aviso de custo com uma instância só. Use o botão **Ativar',
+          'câmera nesta história** para ligar uma por vez; ativar outra desliga a anterior, e rolar',
+          'a história para fora da tela também a desliga. Abrindo a história pela barra lateral',
+          '(`viewMode=story`), nada disso se aplica — ela roda normalmente.',
         ].join('\n'),
       },
     },
@@ -242,4 +396,62 @@ export const SemAdornosVisuais: Story = {
     showFaceFrame: false,
     showFramingGuide: false,
   },
+}
+
+/**
+ * Mesmo componente das outras histórias, só que dentro de um contêiner que
+ * VOCÊ redimensiona — arraste a alça no canto inferior direito da moldura
+ * tracejada.
+ *
+ * Serve para conferir o posicionamento das molduras sob `object-fit: cover`
+ * (§07.9, §09.6): o preview cobre o contêiner, então sempre que a proporção
+ * dele difere da proporção nativa da câmera (tipicamente 4:3 ou 16:9) parte do
+ * quadro fica cortada. A moldura precisa acompanhar o rosto atravessando esse
+ * mesmo recorte — e ser cortada junto quando o rosto sai pela borda.
+ *
+ * Comece bem largo (o padrão, ~3,5:1), depois arraste para bem estreito e alto:
+ * a moldura tem de continuar grudada no rosto nas duas pontas. O componente
+ * continua sem aceitar qualquer prop de tamanho (§20.10) — quem manda no
+ * tamanho é este contêiner.
+ */
+function ConteinerRedimensionavelWrapper(props: SandboxProps) {
+  const [value, setValue] = useState<FotografiaValue>(null)
+
+  return (
+    <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div
+          data-testid="conteiner-redimensionavel"
+          style={{
+            width: 900,
+            height: 260,
+            minWidth: 160,
+            minHeight: 120,
+            resize: 'both',
+            overflow: 'hidden',
+            outline: '2px dashed #888',
+            outlineOffset: 4,
+          }}
+        >
+          <FotografoDeFaces {...props} value={value} onChange={setValue} />
+        </div>
+        <span style={{ font: '13px/1.4 system-ui, sans-serif', color: '#666', maxWidth: 900 }}>
+          Arraste a alça no canto inferior direito para mudar a proporção do contêiner.
+        </span>
+      </div>
+      <PhotoPreview value={value} />
+    </div>
+  )
+}
+
+export const ConteinerRedimensionavel: Story = {
+  args: {
+    mode: 'quiosque',
+    autoCaptureAfter: null,
+    reviewFor: null,
+    showMessages: true,
+    showFaceFrame: true,
+    showFramingGuide: false,
+  },
+  render: (args) => <ConteinerRedimensionavelWrapper {...args} />,
 }
