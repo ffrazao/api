@@ -1,14 +1,31 @@
-# @seagri/fotografo-de-faces
+# @ffrazao/fotografo-de-faces
 
 Componente React para captura assistida de fotografias de face: acessa a câmera,
 detecta e avalia a qualidade da candidata (enquadramento, distância, pose,
 nitidez, iluminação, estabilidade e posicionamento) e só então permite produzir
 a fotografia, já recortada com margem de contexto e comprimida em JPEG.
 
+## Instalação a partir do GitHub Packages
+
+O pacote é publicado no **GitHub Packages**, não no registro público do npm.
+Antes de instalar, crie um `.npmrc` na raiz do projeto que vai consumi-lo:
+
+```
+@ffrazao:registry=https://npm.pkg.github.com/
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+```
+
+`NPM_TOKEN` precisa ser um GitHub Personal Access Token com a permissão
+`read:packages` — o GitHub Packages exige autenticação para instalar, mesmo em
+pacotes públicos. Mantenha o token fora do `.npmrc` versionado: a sintaxe
+`${NPM_TOKEN}` acima lê a variável de ambiente na hora da instalação, então
+basta exportá-la no seu ambiente (`export NPM_TOKEN=ghp_...`) ou defini-la como
+segredo na CI.
+
 ## Instalação
 
 ```bash
-npm install @seagri/fotografo-de-faces
+npm install @ffrazao/fotografo-de-faces
 ```
 
 As dependências abaixo são `peerDependencies` — a aplicação hospedeira é quem
@@ -26,12 +43,12 @@ empacotado junto: não é preciso instalá-los à parte.
 O componente carrega os pesos da `face-api.js` **localmente**, sem nenhuma
 requisição externa em tempo de execução. **Não é preciso baixar nada:** os 4
 arquivos de peso já vêm dentro do pacote instalado, em
-`node_modules/@seagri/fotografo-de-faces/public/models/`. Basta copiá-los para
+`node_modules/@ffrazao/fotografo-de-faces/public/models/`. Basta copiá-los para
 o diretório público da sua aplicação:
 
 ```bash
 mkdir -p public/models
-cp -r node_modules/@seagri/fotografo-de-faces/public/models/. public/models/
+cp -r node_modules/@ffrazao/fotografo-de-faces/public/models/. public/models/
 ```
 
 O `/.` no fim da origem faz o comando copiar o *conteúdo* do diretório, e não o
@@ -54,7 +71,7 @@ cada `npm install` — isso é uma conveniência, **não** um requisito:
 ```json
 {
   "scripts": {
-    "postinstall": "mkdir -p public/models && cp -r node_modules/@seagri/fotografo-de-faces/public/models/. public/models/"
+    "postinstall": "mkdir -p public/models && cp -r node_modules/@ffrazao/fotografo-de-faces/public/models/. public/models/"
   }
 }
 ```
@@ -65,7 +82,7 @@ mesmo comando funcionar em qualquer sistema (`npm install --save-dev shx`):
 ```json
 {
   "scripts": {
-    "postinstall": "shx mkdir -p public/models && shx cp -r node_modules/@seagri/fotografo-de-faces/public/models/* public/models/"
+    "postinstall": "shx mkdir -p public/models && shx cp -r node_modules/@ffrazao/fotografo-de-faces/public/models/* public/models/"
   }
 }
 ```
@@ -81,8 +98,8 @@ propõe um novo via `onChange` e espera a aplicação devolvê-lo em `value`.
 
 ```tsx
 import { useRef, useState } from 'react'
-import { FotografoDeFaces } from '@seagri/fotografo-de-faces'
-import type { FotografoDeFacesHandle } from '@seagri/fotografo-de-faces'
+import { FotografoDeFaces } from '@ffrazao/fotografo-de-faces'
+import type { FotografoDeFacesHandle } from '@ffrazao/fotografo-de-faces'
 
 export function MinhaTela() {
   const [foto, setFoto] = useState<Blob | null>(null)

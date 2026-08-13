@@ -1,5 +1,5 @@
 /**
- * Superfície pública do pacote `@seagri/fotografo-de-faces` — F11.
+ * Superfície pública do pacote `@ffrazao/fotografo-de-faces` — F11.
  *
  * Só o que a aplicação hospedeira precisa para consumir o componente sai
  * daqui. Tudo o que é motor interno (máquina de estados, ciclo de vida da

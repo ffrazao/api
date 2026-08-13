@@ -1,5 +1,5 @@
 {
-  "name": "@seagri/fotografo-de-faces",
+  "name": "@ffrazao/fotografo-de-faces",
   "version": "1.0.0-rc.1",
   "type": "module",
   "description": "Componente React para captura assistida de fotografias de face, com detecção, avaliação de qualidade e recorte biométrico.",
