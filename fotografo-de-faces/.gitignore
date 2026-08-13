@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+storybook-static
 *.local
 
 # Pacotes gerados por `npm pack` em testes locais de distribuição
