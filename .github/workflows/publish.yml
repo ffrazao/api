@@ -71,5 +71,54 @@ jobs:
             echo "A versão $VERSION já está publicada no GitHub Packages. Publicação ignorada para evitar falha no build."
           else
             echo "A versão $VERSION não foi encontrada. Iniciando publicação..."
-            npm publish --registry=https://npm.pkg.github.com
+
+            # O rótulo de publicação é derivado da própria versão, sem intervenção
+            # manual a cada release.
+            #
+            # O npm recusa publicar uma versão de pré-lançamento sem rótulo
+            # explícito ("You must specify a tag using --tag when publishing a
+            # prerelease version"). É uma proteção: sem isso, uma rc assumiria
+            # "latest" e chegaria a quem instalasse o pacote sem pedir versão.
+            #
+            # Uma versão SemVer completa tem a forma
+            # `1.0.0-rc.1+build.5`, com duas partes opcionais: o pré-lançamento
+            # (depois do primeiro hífen) e o metadado de build (depois do `+`).
+            # O rótulo é o primeiro identificador do pré-lançamento, extraído em
+            # três passos:
+
+            # 1. Descartar o metadado de build. Isto vem primeiro porque o
+            #    metadado pode conter hífens (`1.0.0+build-5`), o que faria uma
+            #    versão estável parecer pré-lançamento no passo seguinte.
+            VERSION_CORE="${VERSION%%+*}"
+
+            case "$VERSION_CORE" in
+              *-*)
+                # 2. Tudo depois do primeiro hífen é o pré-lançamento: "rc.1".
+                PRERELEASE="${VERSION_CORE#*-}"
+                # 3. O rótulo é o identificador antes do primeiro ponto, ou seja,
+                #    o nome sem o número de sequência: "rc.1" -> "rc".
+                NPM_TAG="--tag ${PRERELEASE%%.*}"
+                ;;
+              *)
+                NPM_TAG=""
+                ;;
+            esac
+
+            # Resultado, para as formas que este pacote usa:
+            #
+            #   1.0.0-rc.1          ->  --tag rc
+            #   2.1.3-beta.0        ->  --tag beta
+            #   1.0.0-alpha         ->  --tag alpha
+            #   1.0.0-rc.1+build.5  ->  --tag rc
+            #   1.0.0               ->  (nenhum)
+            #
+            # Um pré-lançamento só é instalado sob demanda, pedindo o rótulo
+            # (`npm install @ffrazao/fotografo-de-faces@rc`), e "latest"
+            # permanece intocado. Uma versão estável publica sem `--tag`, e o npm
+            # move "latest" para ela automaticamente.
+
+            # $NPM_TAG é deliberadamente deixado sem aspas: ou se expande em dois
+            # argumentos (--tag rc), ou desaparece por completo quando vazio. Com
+            # aspas, o caso estável passaria uma string vazia como argumento ao npm.
+            npm publish $NPM_TAG --registry=https://npm.pkg.github.com
           fi
