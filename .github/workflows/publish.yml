@@ -12,6 +12,12 @@ jobs:
       contents: read
       packages: write
 
+    # O pacote vive em fotografo-de-faces/, não na raiz do monorepo — que não tem
+    # package.json. Sem isto, todo `run:` abaixo falha já no `npm ci`.
+    defaults:
+      run:
+        working-directory: fotografo-de-faces
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -21,6 +27,10 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
+          # `defaults.run` não alcança entradas de action: sem este caminho
+          # explícito, o cache seria calculado sobre o package-lock.json vazio
+          # da raiz do monorepo.
+          cache-dependency-path: fotografo-de-faces/package-lock.json
           registry-url: 'https://npm.pkg.github.com'
           scope: '@ffrazao'
 
