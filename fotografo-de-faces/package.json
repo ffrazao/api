@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Componente React para captura assistida de fotografias de face, com detecção, avaliação de qualidade e recorte biométrico.",
   "license": "UNLICENSED",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/ffrazao/api.git",

@@ -20,12 +20,19 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Node 20 quebra a suíte inteira: jsdom@30 embute undici@8, que chama
+          # `worker_threads.markAsUncloneable` — API inexistente até o Node 20.20.2
+          # (a última da linha, já em EOL). O sintoma é
+          # `TypeError: webidl.util.markAsUncloneable is not a function` em todos
+          # os arquivos de teste. Node 24 (LTS ativo "Krypton") satisfaz tanto
+          # `jsdom engines: ^22.22.2 || ^24.15.0 || >=26.0.0` quanto
+          # `undici engines: >=22.19.0`.
+          node-version: 24
           cache: 'npm'
           # `defaults.run` não alcança entradas de action: sem este caminho
           # explícito, o cache seria calculado sobre o package-lock.json vazio
