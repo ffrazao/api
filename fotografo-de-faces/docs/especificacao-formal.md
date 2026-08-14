@@ -5,6 +5,8 @@
 - v1.1 — emendas de tolerância de cronômetro (§10.8.1), símbolos do quiosque
   (§07.9.1), exposição de rollback (§16.5 revisado) e validação de valor inicial
   (§05.1.1); registro da divergência de implementação em Trocar/Limpar
+- v1.2 — registro da Divergência #1 marcado como corrigido, sem novas emendas
+  normativas
 
 ---
 
@@ -6692,6 +6694,8 @@ diverge do texto da especificação, para acompanhamento e correção.
 
 ### Divergência #1 — Exibição prematura de Confirmar/Cancelar em Trocar/Limpar
 
+**Situação: corrigida na F12.**
+
 Os diagramas de §04.9, §04.10 e §20.7 estabelecem, de forma consistente, que os
 botões [Confirmar] e [Cancelar] só devem aparecer após uma nova captura ser
 produzida (tanto para Trocar quanto para Limpar — "a diferença entre as duas
@@ -6699,3 +6703,23 @@ ações está apenas na intenção inicial", §04.10). A implementação atual e
 esses botões imediatamente ao clicar em Trocar/Limpar, antes de qualquer nova
 captura. Isto é um bug de implementação a ser corrigido, não uma ambiguidade de
 especificação — o texto original já estava correto.
+
+A correção acrescentou duas consequências que a especificação não previa
+explicitamente, ambas derivadas de regras existentes:
+
+1. Enquanto a operação de revisão estiver em andamento, [Trocar] e [Limpar] não
+   reaparecem. Um segundo clique sobrescreveria o value_rollback e destruiria a
+   fotografia que ainda pode ser restaurada por [Cancelar] (§18.13).
+2. Se um ERRO interromper a operação com o rollback preservado, [Cancelar]
+   permanece disponível sozinho, como saída de recuperação. Sem isso, uma
+   fotografia já confirmada se perderia em silêncio por causa de um erro, que é
+   exatamente o que §18.13 e §18.17 proíbem.
+
+Fica registrado que §13.8 ("Nesse cenário, o componente poderá apresentar
+[Confirmar] [Cancelar]", logo após Limpar, com value = null) é permissivo e não
+obriga o comportamento antigo. Como consequência do critério adotado, uma
+limpeza sem nova captura não chega a uma tela de confirmação — o que não deixa
+nada pendente na prática, já que o onChange(null) de [Limpar] é emitido no ato e
+a aplicação hospedeira já opera sem a fotografia a partir dali. O que permanece
+em aberto é apenas a referência interna de rollback, descartada quando o
+componente é desmontado.
