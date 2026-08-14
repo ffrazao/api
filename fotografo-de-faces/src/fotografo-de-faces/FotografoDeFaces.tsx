@@ -375,10 +375,13 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
   )
 
   const frameColor = getFaceFrameColor(snapshot.state, snapshot.candidate !== null)
-  // §09.1/§09.6 (F6): no quiosque, com faces visíveis, cada uma ganha sua
-  // própria moldura posicionada; fora disso (outros modos, ou quiosque sem
-  // ninguém em cena — ex.: FOTOGRAFIA_PRONTA/ERRO) usa a moldura única de sempre.
-  const showMultiFaceFrames = mode === 'quiosque' && visibleFaces.length > 0
+  // §07.9.1 item 2: no quiosque a interface usa ESTRITAMENTE molduras
+  // retangulares móveis — nunca a oval de face única, em nenhuma
+  // circunstância (nem mesmo num quadro em que `visibleFaces` esteja
+  // momentaneamente vazio: nesse caso não se desenha moldura nenhuma, em vez
+  // de cair para o formato errado). Fora do quiosque, continua a moldura
+  // oval única de sempre.
+  const showMultiFaceFrames = mode === 'quiosque'
   const videoFrameSize = { width: videoRef.current?.videoWidth ?? 0, height: videoRef.current?.videoHeight ?? 0 }
   // O <video> é o elemento que carrega o `object-fit: cover`, então é o tamanho
   // dele — não o do Root — que define o mapeamento das molduras (§07.9, §09.6).

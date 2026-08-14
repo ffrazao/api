@@ -464,20 +464,43 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
 
       // Já travado: só tenta reencontrar a MESMA face por proximidade espacial
       // — nunca reavalia qualidade nem deixa outra face "invadir" o foco.
+      //
+      // Quando existe EXATAMENTE uma face no quadro, não há ambiguidade de "a
+      // quem pertence essa posição": só pode ser a própria candidata travada,
+      // já que o componente nunca faz reconhecimento de identidade (§20.8) —
+      // não existe outro critério para decidir "é ela ou é outra pessoa" além
+      // de ser a única presente. É o mesmo raciocínio que handleSingleFaceMode
+      // já aplica sem checagem de distância nenhuma. A comparação por
+      // proximidade espacial só é necessária quando há mais de uma face no
+      // quadro — aí sim existe uma ambiguidade real sobre qual delas é a
+      // candidata travada (§08.3, §08.5, §09.5). Sem esta exceção, um
+      // deslocamento normal da candidata entre dois quadros PROCESSADOS
+      // (que pode ficar bem mais espaçado que o alvo de 12fps sob um motor
+      // lento — ver `proximoIntervalo` acima) já bastava para ultrapassar os
+      // 25% da largura do quadro e disparar uma perda espúria, mesmo com a
+      // face sendo encontrada em TODO quadro, sem nunca sumir de verdade.
       const lockedBox = recentBoxesRef.current.at(-1) ?? null
-      const matchIndex =
-        lockedBox && faces.length > 0
-          ? findClosestBoxIndex(
-              faces.map((face) => face.box),
-              lockedBox,
-              frame,
-              DEFAULT_LOCK_CONTINUITY_RATIO,
-            )
-          : -1
+      let matchIndex = -1
+      if (faces.length === 1) {
+        matchIndex = 0
+      } else if (lockedBox && faces.length > 1) {
+        matchIndex = findClosestBoxIndex(
+          faces.map((face) => face.box),
+          lockedBox,
+          frame,
+          DEFAULT_LOCK_CONTINUITY_RATIO,
+        )
+      }
 
       if (matchIndex === -1) {
-        updateVisibleFaces(faces.map((face, index) => ({ id: `visible-${index}`, box: face.box, locked: false })))
         handleCandidateNotVisible(nowMs)
+        // Não sobrescreve visibleFaces aqui: dentro da tolerância de perda
+        // (mesma janela do CANDIDATE_LOST), o último quadro travado continua
+        // sendo a melhor informação que se tem — apagá-lo faz a UI cair para
+        // a moldura única em formato oval (o fallback de face única do modo
+        // autorretrato/assistido), violando §07.9.1 mesmo com o Face Lock
+        // ainda ativo para a máquina. `handleCandidateNotVisible` já zera
+        // visibleFaces para [] quando a tolerância realmente se esgota.
         return
       }
 
