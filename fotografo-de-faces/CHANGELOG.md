@@ -5,7 +5,7 @@ Todas as mudanças relevantes deste componente são registradas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não publicado]
+## [1.0.0-rc.2] - 2026-08-14
 
 Estabilização de contratos e alinhamento com as emendas v1.1 da especificação
 formal (`docs/especificacao-formal.md`), agora a fonte de verdade normativa do
@@ -151,11 +151,12 @@ determinística antes da correção:
   aplicação hospedeira. O desvio medido nos mesmos cenários caiu a zero.
 
 <!--
-  Ainda não existe tag git para esta versão, então o link abaixo aponta para o
-  diretório do componente no repositório — o alvo mais específico que de fato
-  existe hoje. Quando a primeira release for marcada (`git tag`), troque-o pela
-  tag correspondente, e passe a usar links de comparação entre versões nas
-  entradas seguintes.
+  Ainda não existe tag git para nenhuma destas versões, então os links abaixo
+  apontam para o diretório do componente no repositório — o alvo mais
+  específico que de fato existe hoje. Quando as releases forem marcadas
+  (`git tag`), troque-os pelas tags correspondentes, e passe a usar links de
+  comparação entre versões nas entradas seguintes.
 -->
 
+[1.0.0-rc.2]: https://github.com/ffrazao/api/tree/main/fotografo-de-faces
 [1.0.0-rc.1]: https://github.com/ffrazao/api/tree/main/fotografo-de-faces

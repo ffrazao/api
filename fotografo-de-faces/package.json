@@ -1,6 +1,6 @@
 {
   "name": "@ffrazao/fotografo-de-faces",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "type": "module",
   "description": "Componente React para captura assistida de fotografias de face, com detecção, avaliação de qualidade e recorte biométrico.",
   "license": "UNLICENSED",
