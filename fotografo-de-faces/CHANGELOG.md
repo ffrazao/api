@@ -5,6 +5,44 @@ Todas as mudanças relevantes deste componente são registradas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [1.0.0-rc.3] - 2026-08-14
+
+Correção de bug de implementação no modo quiosque, relatado a partir de teste
+manual na história "Painel Ao Vivo Quiosque" (`autoCaptureAfter=3`): o
+indicador visual da candidata travada pelo Face Lock alternava entre forma
+circular e retangular (a cor por estado permanecia correta — só a geometria
+falhava), e o cronômetro regressivo reiniciava repetidamente antes de
+completar com sucesso. Nenhum dos dois sintomas decorre de ambiguidade da
+especificação; são bugs de implementação, com causas raiz distintas
+confirmadas por reprodução determinística antes da correção.
+
+### Corrigido
+
+- **Moldura da candidata travada virava oval no quiosque.** Um único quadro em
+  que o motor de detecção não encontrava nenhuma face (ruído comum do
+  detector, não perda de verdade) esvaziava a lista de faces visíveis mesmo
+  com a candidata ainda dentro da tolerância de 700ms de perda. Como a
+  renderização decidia entre moldura retangular e a oval de face única com
+  base nessa lista, ela caía no fallback errado exatamente naquele quadro,
+  voltando ao retângulo no seguinte — a alternância observada. A correção
+  para de esvaziar a última moldura travada durante a janela de tolerância (só
+  limpa de fato quando a perda é confirmada) e, como reforço, o quiosque nunca
+  mais renderiza a moldura oval, em nenhuma circunstância.
+- **Cronômetro reiniciando repetidamente no quiosque.** Causa distinta da
+  anterior: mesmo com uma face encontrada em absolutamente todo quadro
+  processado (o motor nunca deixava de detectar ninguém), o Face Lock exigia
+  que a posição da face ficasse a menos de 25% da largura do quadro em
+  relação ao último quadro combinado — um limiar fixo, indiferente ao tempo
+  decorrido entre dois quadros processados. Sob um motor mais lento (quadros
+  mais espaçados), um deslocamento normal da candidata já ultrapassava esse
+  limiar e alimentava a mesma contagem de tolerância usada para sumiço total,
+  cancelando o disparo sem a pessoa ter saído de cena. A correção deixa de
+  exigir essa checagem de distância quando existe exatamente uma face no
+  quadro — não há ambiguidade possível sobre "quem é quem" sem mais de uma
+  candidata presente, e o componente não faz reconhecimento de identidade. A
+  checagem por proximidade espacial continua obrigatória quando há duas ou
+  mais faces em cena, para o Face Lock nunca "pular" para outra pessoa.
+
 ## [1.0.0-rc.2] - 2026-08-14
 
 Estabilização de contratos e alinhamento com as emendas v1.1 da especificação
@@ -158,5 +196,6 @@ determinística antes da correção:
   comparação entre versões nas entradas seguintes.
 -->
 
+[1.0.0-rc.3]: https://github.com/ffrazao/api/tree/main/fotografo-de-faces
 [1.0.0-rc.2]: https://github.com/ffrazao/api/tree/main/fotografo-de-faces
 [1.0.0-rc.1]: https://github.com/ffrazao/api/tree/main/fotografo-de-faces
