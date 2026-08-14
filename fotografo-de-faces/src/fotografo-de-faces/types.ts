@@ -60,6 +60,12 @@ export interface Candidate {
 export interface TimerState {
   totalSeconds: number
   remainingSeconds: number
+  /**
+   * §10.8.1 (emenda v1.1): contagem congelada dentro da janela de tolerância —
+   * a qualidade reprovou, mas ainda não passou tempo suficiente para cancelar
+   * o disparo. Enquanto for `true`, `remainingSeconds` não avança.
+   */
+  suspended: boolean
 }
 
 /**
@@ -73,10 +79,23 @@ export type CameraAccessErrorReason =
   | 'dispositivo-ausente'
   | 'hardware-indisponivel'
 
-/** Razão de qualquer ERRO da máquina — inclui falhas de câmera e de captura. */
-export type FotografoDeFacesErrorReason = CameraAccessErrorReason | 'falha-de-captura'
+/**
+ * Razão de qualquer ERRO da máquina — inclui falhas de câmera, de captura e a
+ * reprovação do valor inicial. `INVALID_INITIAL_VALUE` é grafado exatamente
+ * assim porque §05.1.1 o define como um CÓDIGO de erro público, exposto pelo
+ * `errorCode` de getState() — não é um rótulo interno como os demais.
+ */
+export type FotografoDeFacesErrorReason =
+  | CameraAccessErrorReason
+  | 'falha-de-captura'
+  | 'INVALID_INITIAL_VALUE'
 
-/** Formato de retorno de getState(), conforme §16.5. */
+/**
+ * Retrato do que a MÁQUINA (machine.ts) sabe — base do retorno de getState()
+ * (§16.5). O `value_rollback` não aparece aqui de propósito: ele é do
+ * componente, não do reducer (§20.7); quem o acrescenta é
+ * `FotografoDeFacesPublicSnapshot`.
+ */
 export interface FotografoDeFacesSnapshot {
   state: FotografoDeFacesState
   message: string
@@ -85,6 +104,25 @@ export interface FotografoDeFacesSnapshot {
   timer: TimerState | null
   candidate: Candidate | null
   mode: FotografoDeFacesMode
+  /**
+   * §05.1.1/§18.12: código do ERRO atual, para a aplicação distinguir os
+   * motivos sem precisar interpretar a mensagem em português. `null` fora de
+   * ERRO.
+   */
+  errorCode: FotografoDeFacesErrorReason | null
+}
+
+/**
+ * §16.5 (emenda v1.1) — o que getState() devolve pelo `useRef`: tudo o que a
+ * máquina sabe, mais o `value_rollback` em leitura estrita.
+ */
+export interface FotografoDeFacesPublicSnapshot extends FotografoDeFacesSnapshot {
+  /**
+   * Fotografia anterior preservada durante uma operação de revisão, ou `null`
+   * quando não há alteração em andamento (§04.7, §13.10). Somente leitura: não
+   * existe prop, evento ou método que escreva neste valor (§20.7).
+   */
+  rollbackValue: FotografiaValue
 }
 
 /**
@@ -107,3 +145,16 @@ export type FotografoDeFacesEvent =
   | { type: 'RESTART_REQUESTED' }
   | { type: 'SET_AUTO_CAPTURE_AFTER'; autoCaptureAfter: number | null }
   | { type: 'CAMERA_ACCESS_FAILED'; reason: CameraAccessErrorReason; message?: string }
+  /**
+   * §10.8.1: a janela de tolerância de 300ms expirou com a qualidade ainda
+   * reprovada — só então o disparo é cancelado. Quem conta o tempo é o
+   * componente (mesmo arranjo de TIMER_TICK), para o reducer seguir puro.
+   */
+  | { type: 'GRACE_PERIOD_EXPIRED' }
+  /**
+   * §05.1.1: a passagem passiva de detecção sobre o Blob fornecido na montagem
+   * não encontrou exatamente uma face. Carrega o próprio Blob avaliado para o
+   * reducer poder ignorar um resultado que chegue tarde demais, quando o
+   * usuário já trocou de fotografia.
+   */
+  | { type: 'INITIAL_VALUE_REJECTED'; value: Blob; message?: string }

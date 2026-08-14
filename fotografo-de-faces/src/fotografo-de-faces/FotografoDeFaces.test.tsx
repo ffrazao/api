@@ -32,6 +32,7 @@ function buildSnapshot(overrides: Partial<FotografoDeFacesSnapshot> = {}): Fotog
     timer: null,
     candidate: null,
     mode: 'autorretrato',
+    errorCode: null,
     ...overrides,
   }
 }
@@ -86,7 +87,7 @@ describe('FotografoDeFaces — molduras coloridas (§07.9, §14.11)', () => {
   })
 })
 
-describe('FotografoDeFaces — guia de enquadramento (§02.1 item 4, §20.4)', () => {
+describe('FotografoDeFaces — guia de enquadramento (§02.1 item 4, §20.4, §07.9.1)', () => {
   it('exibe a guia oval quando showFramingGuide é true', () => {
     renderComponent({ showFramingGuide: true })
     expect(screen.getByTestId('framing-guide')).toBeInTheDocument()
@@ -94,6 +95,11 @@ describe('FotografoDeFaces — guia de enquadramento (§02.1 item 4, §20.4)', (
 
   it('oculta a guia oval quando showFramingGuide é false (padrão)', () => {
     renderComponent({})
+    expect(screen.queryByTestId('framing-guide')).not.toBeInTheDocument()
+  })
+
+  it('§07.9.1 item 1 — no quiosque a guia fica oculta mesmo com showFramingGuide=true', () => {
+    renderComponent({ mode: 'quiosque', showFramingGuide: true }, { mode: 'quiosque' })
     expect(screen.queryByTestId('framing-guide')).not.toBeInTheDocument()
   })
 })
@@ -155,7 +161,7 @@ describe('FotografoDeFaces — cronômetro regressivo (§07.5, §10.3, §14.6)',
   it('exibe o tempo restante em CRONOMETRANDO', () => {
     renderComponent(
       {},
-      { state: 'CRONOMETRANDO', candidate, timer: { totalSeconds: 3, remainingSeconds: 2 } },
+      { state: 'CRONOMETRANDO', candidate, timer: { totalSeconds: 3, remainingSeconds: 2, suspended: false } },
     )
     expect(screen.getByTestId('countdown')).toHaveTextContent('2')
   })
@@ -226,6 +232,23 @@ describe('FotografoDeFaces — molduras do quiosque, uma por face visível (§07
     renderComponent({ mode: 'quiosque', showFaceFrame: false }, { state: 'PRONTO', mode: 'quiosque', candidate })
 
     expect(screen.queryByTestId('face-frame')).not.toBeInTheDocument()
+  })
+
+  it('§07.9.1 item 2 — as faces não travadas recebem moldura fina; a travada, a de status', () => {
+    vi.mocked(useFaceDetection).mockReturnValue({
+      status: 'ready',
+      visibleFaces: [
+        { id: 'a', box: { x: 10, y: 10, width: 100, height: 100 }, locked: false },
+        { id: 'b', box: { x: 200, y: 50, width: 120, height: 120 }, locked: true },
+      ],
+      candidateBox: null,
+    })
+
+    renderComponent({ mode: 'quiosque', showFaceFrame: true }, { state: 'PRONTO', mode: 'quiosque', candidate })
+
+    const [naoTravada, travada] = screen.getAllByTestId('face-frame')
+    expect(naoTravada).toHaveStyle({ borderWidth: '1px' })
+    expect(travada).toHaveStyle({ borderWidth: '3px' })
   })
 
   it('fora do quiosque, usa a moldura única de sempre mesmo que visibleFaces venha preenchido', () => {

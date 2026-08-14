@@ -156,7 +156,7 @@ describe('FotografoDeFaces (ref) — consultas de estado (§16.5–§16.9)', () 
 
     const state = ref.current!.getState()
     expect(state.state).toBe('CRONOMETRANDO')
-    expect(state.timer).toEqual({ totalSeconds: 3, remainingSeconds: 3 })
+    expect(state.timer).toEqual({ totalSeconds: 3, remainingSeconds: 3, suspended: false })
     expect(state.quality?.aprovada).toBe(true)
     expect(state.candidate).toEqual(candidate)
     expect(state.mode).toBe('assistido')
@@ -187,6 +187,64 @@ describe('FotografoDeFaces (ref) — setFullscreen (§16.4)', () => {
   })
 })
 
+describe('FotografoDeFaces (ref) — getRollbackValue()/rollbackValue (§16.5, emenda v1.1)', () => {
+  it('acompanha o ciclo de vida do value_rollback durante uma troca', () => {
+    const original = fakePhoto('original')
+    const nova = fakePhoto('nova')
+    const ref = createRef<FotografoDeFacesHandle>()
+
+    render(<Host initialValue={original} refHandle={ref} autoCaptureAfter={null} reviewFor={3000} />)
+
+    // Sem alteração em andamento não há rollback (§13.10).
+    expect(ref.current?.getRollbackValue()).toBeNull()
+    expect(ref.current?.getState().rollbackValue).toBeNull()
+
+    act(() => {
+      screen.getByTestId('trocar-button').click()
+    })
+
+    // §13.10: `value = null` + `value_rollback = Foto A` — alteração em
+    // andamento, ainda sem nova fotografia atribuída.
+    expect(ref.current?.getValue()).toBeNull()
+    expect(ref.current?.getRollbackValue()).toBe(original)
+
+    driveToReady()
+    act(() => {
+      ref.current?.capture()
+      latestDispatch()({ type: 'CAPTURE_SUCCEEDED', value: nova })
+    })
+
+    // §13.10: `Blob` + `Blob` — é esta combinação que permite ao hospedeiro
+    // montar "Foto Anterior" × "Nova Captura".
+    expect(ref.current?.getValue()).toBe(nova)
+    expect(ref.current?.getRollbackValue()).toBe(original)
+    expect(ref.current?.getState().rollbackValue).toBe(original)
+
+    act(() => {
+      screen.getByTestId('confirmar-button').click()
+    })
+    expect(ref.current?.getRollbackValue()).toBeNull()
+  })
+
+  it('a leitura não abre caminho de escrita: mexer no snapshot não altera o rollback', () => {
+    const original = fakePhoto('original')
+    const ref = createRef<FotografoDeFacesHandle>()
+
+    render(<Host initialValue={original} refHandle={ref} autoCaptureAfter={null} reviewFor={3000} />)
+    act(() => {
+      screen.getByTestId('trocar-button').click()
+    })
+
+    const snapshot = ref.current!.getState()
+    snapshot.rollbackValue = fakePhoto('intrusa')
+
+    // §20.7: o snapshot é uma cópia — o ciclo de vida do rollback segue
+    // exclusivamente sob controle interno do componente.
+    expect(ref.current?.getRollbackValue()).toBe(original)
+    expect(ref.current?.getState().rollbackValue).toBe(original)
+  })
+})
+
 describe('FotografoDeFaces (ref) — superfície mínima (§16.10, §16.11)', () => {
   it('não expõe nenhum método para forçar estado/captura por fora da máquina', () => {
     const ref = createRef<FotografoDeFacesHandle>()
@@ -194,7 +252,19 @@ describe('FotografoDeFaces (ref) — superfície mínima (§16.10, §16.11)', ()
 
     const methods = Object.keys(ref.current ?? {})
     expect(methods.sort()).toEqual(
-      ['capture', 'getMessage', 'getQuality', 'getState', 'getTimer', 'getValue', 'restart', 'setFullscreen'].sort(),
+      [
+        'capture',
+        'getMessage',
+        'getQuality',
+        // §16.5 (emenda v1.1): leitura do rollback — nenhum par de escrita
+        // acompanha (não existe setRollbackValue()).
+        'getRollbackValue',
+        'getState',
+        'getTimer',
+        'getValue',
+        'restart',
+        'setFullscreen',
+      ].sort(),
     )
   })
 })

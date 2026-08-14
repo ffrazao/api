@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createInitialMachineContext,
   fotografoDeFacesReducer,
+  toSnapshot,
   type MachineContext,
 } from './machine'
 import type { Candidate, FotografoDeFacesEvent, FotografoDeFacesState, Quality } from './types'
@@ -91,11 +92,11 @@ describe('FotografoDeFaces — fluxos completos (§06.3)', () => {
       { type: 'QUALITY_CHANGED', quality: approvedQuality() },
     ])
     expect(cronometrando.state).toBe('CRONOMETRANDO')
-    expect(cronometrando.timer).toEqual({ totalSeconds: 3, remainingSeconds: 3 })
+    expect(cronometrando.timer).toEqual({ totalSeconds: 3, remainingSeconds: 3, suspended: false })
 
     const contando = run(cronometrando, [{ type: 'TIMER_TICK', remainingSeconds: 2 }])
     expect(contando.state).toBe('CRONOMETRANDO')
-    expect(contando.timer).toEqual({ totalSeconds: 3, remainingSeconds: 2 })
+    expect(contando.timer).toEqual({ totalSeconds: 3, remainingSeconds: 2, suspended: false })
 
     const capturando = run(contando, [
       { type: 'TIMER_TICK', remainingSeconds: 1 },
@@ -151,25 +152,127 @@ describe('FotografoDeFaces — perda da candidata (§06.4, §06.5, §07.5)', () 
     const cronometrando = contextIn('CRONOMETRANDO', {
       candidate: candidate(),
       quality: approvedQuality(),
-      timer: { totalSeconds: 5, remainingSeconds: 2 },
+      timer: { totalSeconds: 5, remainingSeconds: 2, suspended: false },
     })
     const resultado = fotografoDeFacesReducer(cronometrando, { type: 'CANDIDATE_LOST' })
     expect(resultado.state).toBe('DETECTANDO')
     expect(resultado.timer).toBeNull()
   })
 
-  it('§06.5/§06.9 — reprovação de qualidade no instante do disparo cancela a captura mesmo com o tick chegando a zero', () => {
+  it('§06.5/§06.9/§10.8.1 — reprovação de qualidade antes do tick final impede a captura', () => {
     const cronometrando = contextIn('CRONOMETRANDO', {
       candidate: candidate(),
       quality: approvedQuality(),
-      timer: { totalSeconds: 3, remainingSeconds: 1 },
+      timer: { totalSeconds: 3, remainingSeconds: 1, suspended: false },
     })
-    // A condição é perdida antes do tick final chegar — o disparo não deve ocorrer.
+    // A condição é perdida antes do tick final chegar. Depois da emenda v1.1 a
+    // contagem entra na janela de tolerância em vez de cancelar na hora — mas
+    // a garantia dura permanece: NUNCA capturar sem qualidade aprovada (§06.9).
     const resultado = run(cronometrando, [
       { type: 'QUALITY_CHANGED', quality: reprovedQuality() },
       { type: 'TIMER_TICK', remainingSeconds: 0 },
     ])
+    expect(resultado.state).not.toBe('CAPTURANDO')
+    expect(resultado.timer?.suspended).toBe(true)
+
+    // E, esgotada a janela, o disparo é cancelado e o ciclo recomeça (§10.8).
+    const expirado = run(resultado, [{ type: 'GRACE_PERIOD_EXPIRED' }])
+    expect(expirado.state).toBe('DETECTANDO')
+    expect(expirado.timer).toBeNull()
+  })
+})
+
+describe('FotografoDeFaces — janela de tolerância do cronômetro (§10.8.1, emenda v1.1)', () => {
+  function cronometrando(overrides: Partial<MachineContext> = {}): MachineContext {
+    return contextIn('CRONOMETRANDO', {
+      candidate: candidate(),
+      quality: approvedQuality(),
+      timer: { totalSeconds: 3, remainingSeconds: 2, suspended: false },
+      ...overrides,
+    })
+  }
+
+  it('item 1 — uma reprovação momentânea suspende a contagem em vez de cancelá-la', () => {
+    const resultado = run(cronometrando(), [{ type: 'QUALITY_CHANGED', quality: reprovedQuality() }])
+
+    expect(resultado.state).toBe('CRONOMETRANDO')
+    expect(resultado.timer).toEqual({ totalSeconds: 3, remainingSeconds: 2, suspended: true })
+  })
+
+  it('item 1 — critérios reestabelecidos dentro da janela retomam a contagem de onde parou', () => {
+    const resultado = run(cronometrando(), [
+      { type: 'QUALITY_CHANGED', quality: reprovedQuality() },
+      { type: 'QUALITY_CHANGED', quality: approvedQuality() },
+    ])
+
+    expect(resultado.state).toBe('CRONOMETRANDO')
+    // Retomada, e não reinício: continua nos mesmos 2 segundos restantes.
+    expect(resultado.timer).toEqual({ totalSeconds: 3, remainingSeconds: 2, suspended: false })
+  })
+
+  it('item 1 — a contagem não avança enquanto estiver suspensa', () => {
+    const resultado = run(cronometrando(), [
+      { type: 'QUALITY_CHANGED', quality: reprovedQuality() },
+      { type: 'TIMER_TICK', remainingSeconds: 1 },
+    ])
+
+    expect(resultado.timer?.remainingSeconds).toBe(2)
+  })
+
+  it('item 1 — quadros reprovados sucessivos não reiniciam a janela (ela precisa poder expirar)', () => {
+    const suspenso = run(cronometrando(), [{ type: 'QUALITY_CHANGED', quality: reprovedQuality() }])
+    const aindaSuspenso = run(suspenso, [
+      { type: 'QUALITY_CHANGED', quality: reprovedQuality() },
+      { type: 'QUALITY_CHANGED', quality: reprovedQuality() },
+    ])
+
+    // O `timer` não é recriado a cada quadro reprovado — é essa estabilidade que
+    // impede o efeito de 300ms do componente de ser reagendado sem parar.
+    expect(aindaSuspenso.timer).toBe(suspenso.timer)
+    expect(run(aindaSuspenso, [{ type: 'GRACE_PERIOD_EXPIRED' }]).state).toBe('DETECTANDO')
+  })
+
+  it('item 1 — GRACE_PERIOD_EXPIRED é ignorado quando a contagem não está suspensa', () => {
+    const resultado = run(cronometrando(), [{ type: 'GRACE_PERIOD_EXPIRED' }])
+
+    expect(resultado.state).toBe('CRONOMETRANDO')
+    expect(resultado.timer?.remainingSeconds).toBe(2)
+  })
+
+  it('item 2 — perda TOTAL da face cancela na hora, sem passar pela janela', () => {
+    const resultado = run(cronometrando(), [{ type: 'CANDIDATE_LOST' }])
+
     expect(resultado.state).toBe('DETECTANDO')
+    expect(resultado.timer).toBeNull()
+    expect(resultado.candidate).toBeNull()
+  })
+
+  it('item 2 — perda total durante a janela de tolerância também cancela na hora', () => {
+    const resultado = run(cronometrando(), [
+      { type: 'QUALITY_CHANGED', quality: reprovedQuality() },
+      { type: 'CANDIDATE_LOST' },
+    ])
+
+    expect(resultado.state).toBe('DETECTANDO')
+    expect(resultado.timer).toBeNull()
+  })
+
+  it('item 3 — na expiração do cronômetro, o último resultado de qualidade conhecido decide', () => {
+    // Qualidade aprovada em mãos: dispara.
+    const aprovado = run(cronometrando({ timer: { totalSeconds: 3, remainingSeconds: 1, suspended: false } }), [
+      { type: 'TIMER_TICK', remainingSeconds: 0 },
+    ])
+    expect(aprovado.state).toBe('CAPTURANDO')
+
+    // Último resultado reprovado: cancela em vez de capturar (§06.9, §10.13).
+    const reprovado = run(
+      cronometrando({
+        quality: reprovedQuality(),
+        timer: { totalSeconds: 3, remainingSeconds: 1, suspended: false },
+      }),
+      [{ type: 'TIMER_TICK', remainingSeconds: 0 }],
+    )
+    expect(reprovado.state).toBe('DETECTANDO')
   })
 })
 
@@ -233,7 +336,7 @@ describe('FotografoDeFaces — restart() por estado de origem (§19)', () => {
     const cronometrando = contextIn('CRONOMETRANDO', {
       candidate: candidate(),
       quality: approvedQuality(),
-      timer: { totalSeconds: 5, remainingSeconds: 4 },
+      timer: { totalSeconds: 5, remainingSeconds: 4, suspended: false },
     })
     const resultado = fotografoDeFacesReducer(cronometrando, { type: 'RESTART_REQUESTED' })
     expect(resultado.state).toBe('AGUARDANDO')
@@ -381,5 +484,57 @@ describe('FotografoDeFaces — falha de acesso à câmera (§05.11, F2)', () => 
       reason: 'hardware-indisponivel',
     })
     expect(resultado.state).toBe('CAPTURANDO')
+  })
+})
+
+describe('FotografoDeFaces — reprovação do valor inicial (§05.1.1, emenda v1.1)', () => {
+  it('leva a ERRO com o código INVALID_INITIAL_VALUE, preservando o `value` (§18.13)', () => {
+    const foto = fakePhoto()
+    const fotografiaPronta = contextIn('FOTOGRAFIA_PRONTA', { value: foto })
+
+    const resultado = fotografoDeFacesReducer(fotografiaPronta, { type: 'INITIAL_VALUE_REJECTED', value: foto })
+
+    expect(resultado.state).toBe('ERRO')
+    expect(resultado.errorReason).toBe('INVALID_INITIAL_VALUE')
+    expect(resultado.value).toBe(foto)
+  })
+
+  it('expõe o código por toSnapshot(), que é a base de getState() (§16.5, §18.12)', () => {
+    const foto = fakePhoto()
+    const erro = fotografoDeFacesReducer(contextIn('FOTOGRAFIA_PRONTA', { value: foto }), {
+      type: 'INITIAL_VALUE_REJECTED',
+      value: foto,
+    })
+
+    expect(toSnapshot(erro).errorCode).toBe('INVALID_INITIAL_VALUE')
+    // Fora de ERRO nenhum código vaza para um estado saudável.
+    expect(toSnapshot(contextIn('AGUARDANDO')).errorCode).toBeNull()
+  })
+
+  it('restart() não mascara a reprovação — a saída prevista é Trocar/Limpar (§05.1.1 item 4, §19)', () => {
+    const foto = fakePhoto()
+    const erro = fotografoDeFacesReducer(contextIn('FOTOGRAFIA_PRONTA', { value: foto }), {
+      type: 'INITIAL_VALUE_REJECTED',
+      value: foto,
+    })
+
+    expect(fotografoDeFacesReducer(erro, { type: 'RESTART_REQUESTED' }).state).toBe('ERRO')
+  })
+
+  it('um resultado que chegue depois de o usuário trocar a fotografia é descartado (§18.12)', () => {
+    const antiga = fakePhoto()
+    const nova = fakePhoto()
+
+    // O usuário já capturou outra foto enquanto a validação passiva rodava.
+    const outraFoto = contextIn('FOTOGRAFIA_PRONTA', { value: nova })
+    expect(fotografoDeFacesReducer(outraFoto, { type: 'INITIAL_VALUE_REJECTED', value: antiga }).state).toBe(
+      'FOTOGRAFIA_PRONTA',
+    )
+
+    // Ou já clicou em Trocar e o componente voltou ao fluxo de captura.
+    const buscandoDeNovo = contextIn('DETECTANDO', { value: null })
+    expect(fotografoDeFacesReducer(buscandoDeNovo, { type: 'INITIAL_VALUE_REJECTED', value: antiga }).state).toBe(
+      'DETECTANDO',
+    )
   })
 })

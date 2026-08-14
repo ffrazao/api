@@ -22,6 +22,9 @@ export type {
   FotografoDeFacesState,
   FotografoDeFacesMode,
   FotografoDeFacesSnapshot,
+  // §16.5 (emenda v1.1) — o que getState() devolve de fato: o snapshot da
+  // máquina mais `rollbackValue` em leitura estrita.
+  FotografoDeFacesPublicSnapshot,
   FotografiaValue,
   Quality,
   QualityCriteria,

@@ -16,7 +16,12 @@ export interface DetectedFace {
   landmarks: Point2D[]
 }
 
-export type FaceDetectionInput = HTMLVideoElement | HTMLCanvasElement
+/**
+ * `HTMLImageElement` entrou na F12: a validação passiva do valor inicial
+ * (§05.1.1) analisa um frame ESTÁTICO decodificado de um Blob, não o `<video>`
+ * ao vivo. A face-api.js aceita os três igualmente.
+ */
+export type FaceDetectionInput = HTMLVideoElement | HTMLCanvasElement | HTMLImageElement
 
 export interface FaceDetector {
   /** Carrega os modelos necessários a partir de `modelsUrl`; idempotente. */

@@ -105,10 +105,17 @@ export const FaceFrameOval = styled.div<{ $color: string }>`
 /**
  * Moldura posicionada sobre uma face específica — usada no quiosque (F6),
  * onde várias faces podem estar visíveis ao mesmo tempo (§09.6).
+ *
+ * §07.9.1 item 2: as faces NÃO travadas recebem uma moldura "fina e discreta"
+ * (`$thin`), para que a candidata protegida pelo Face Lock continue sendo o
+ * único elemento visualmente dominante da cena. A diferença é de espessura e
+ * de opacidade — a cor amarela das secundárias já é a mesma da detecção
+ * passiva (§09.1).
  */
-export const FaceFrameBox = styled.div<{ $color: string }>`
+export const FaceFrameBox = styled.div<{ $color: string; $thin?: boolean }>`
   position: absolute;
-  border: 3px solid ${(props) => props.$color};
+  border: ${(props) => (props.$thin ? '1px' : '3px')} solid ${(props) => props.$color};
+  opacity: ${(props) => (props.$thin ? 0.7 : 1)};
   border-radius: 8px;
   box-sizing: border-box;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);

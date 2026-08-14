@@ -5,6 +5,52 @@ Todas as mudanças relevantes deste componente são registradas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
 versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não publicado]
+
+Estabilização de contratos e alinhamento com as emendas v1.1 da especificação
+formal (`docs/especificacao-formal.md`), agora a fonte de verdade normativa do
+projeto.
+
+### Adicionado
+
+- **Janela de tolerância no cronômetro** (§10.8.1): uma reprovação momentânea de
+  qualidade durante `CRONOMETRANDO` passa a suspender a contagem por até 300ms
+  em vez de cancelá-la de imediato. Recuperando os critérios dentro da janela, a
+  contagem retoma de onde parou — o tempo congelado é devolvido ao prazo, então
+  a captura nunca dispara adiantada. A perda total da face continua cancelando
+  na hora, sem amortecimento. `TimerState` ganhou o campo `suspended`.
+- **`getRollbackValue()` e `getState().rollbackValue`** (§16.5): acesso
+  estritamente somente-leitura à fotografia preservada durante uma operação de
+  revisão, para o hospedeiro montar comparações do tipo "Foto Anterior" × "Nova
+  Captura". Nenhum caminho de escrita foi aberto (§20.7).
+- **`getState().errorCode`** (§18.12): identifica o motivo de um `ERRO` sem
+  depender da mensagem em português.
+- **Validação passiva da fotografia inicial** (§05.1.1): montando o componente
+  com `value = Blob`, os modelos são carregados e uma única passagem de detecção
+  roda em segundo plano sobre a imagem. Sem exatamente um rosto identificável, o
+  componente vai a `ERRO` com o código `INVALID_INITIAL_VALUE`; a fotografia não
+  é apagada e a saída são as ações de revisão (§18.13). Falha de infraestrutura
+  (modelos indisponíveis, imagem que não decodifica) não é tratada como
+  reprovação.
+
+### Corrigido
+
+- **[Confirmar]/[Cancelar] apareciam cedo demais** (§04.9, §04.10, §20.7): os
+  botões surgiam no clique de Trocar/Limpar, antes de existir qualquer nova
+  captura para aceitar ou descartar. Agora só aparecem depois de uma nova
+  fotografia consolidada, com a mesma regra para as duas ações — a diferença
+  entre elas está apenas na intenção inicial (§04.10). Enquanto a operação
+  estiver em andamento, Trocar/Limpar não reaparecem, o que impede sobrescrever
+  o rollback. Se um erro interromper a operação, Cancelar permanece disponível
+  para restaurar a fotografia anterior (§18.13, §18.17).
+
+### Alterado
+
+- **Símbolos visuais no modo quiosque** (§07.9.1): a guia oval fixa é forçada a
+  oculta (o enquadramento no quiosque é dinâmico, §03.2), e as faces não
+  travadas passam a exibir molduras amarelas finas e discretas. A candidata
+  protegida pelo Face Lock preserva o mapeamento de cores do §07.9.
+
 ## [1.0.0-rc.1] - 2026-08-12
 
 Primeira versão candidata: o componente está completo em relação à

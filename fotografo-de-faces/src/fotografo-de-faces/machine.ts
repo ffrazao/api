@@ -84,8 +84,25 @@ export function toSnapshot(context: MachineContext): FotografoDeFacesSnapshot {
     timer: context.timer,
     candidate: context.candidate,
     mode: context.mode,
+    // §18.12/§05.1.1: fora de ERRO não existe código a comunicar — o motivo do
+    // erro ANTERIOR não pode vazar para um estado saudável.
+    errorCode: context.state === 'ERRO' ? context.errorReason : null,
   }
 }
+
+/**
+ * §10.8.1: janela de tolerância do cronômetro, em milissegundos.
+ *
+ * ~3-4 quadros a 12fps. Amortece a REPROVAÇÃO DE QUALIDADE (qualquer um dos 7
+ * critérios), que é coisa diferente da média móvel de `estabilidade` em
+ * faceMetrics.ts: aquela suaviza o ruído do detector dentro de um único
+ * critério geométrico; esta impede que um quadro escuro, tremido ou de cabeça
+ * momentaneamente virada derrube uma contagem inteira.
+ *
+ * Não vale para perda TOTAL da face (CANDIDATE_LOST), que continua cancelando
+ * na hora (§10.8.1 item 2, §10.8).
+ */
+export const QUALITY_GRACE_PERIOD_MS = 300
 
 const CLEARED_CYCLE_FIELDS = {
   candidate: null,
@@ -110,7 +127,7 @@ function enterProntoOrAutoCapture(context: MachineContext): MachineContext {
     return {
       ...context,
       state: 'CRONOMETRANDO',
-      timer: { totalSeconds: autoCaptureAfter, remainingSeconds: autoCaptureAfter },
+      timer: { totalSeconds: autoCaptureAfter, remainingSeconds: autoCaptureAfter, suspended: false },
     }
   }
   return { ...context, state: 'PRONTO', timer: null }
@@ -198,6 +215,38 @@ function applyCameraAccessFailed(
   }
 }
 
+/**
+ * §05.1.1: o Blob que a aplicação forneceu na montagem não tem exatamente uma
+ * face identificável.
+ *
+ * Só vale enquanto o componente ainda estiver exibindo AQUELE Blob em
+ * FOTOGRAFIA_PRONTA: se o usuário já trocou/limpou a fotografia enquanto a
+ * passagem passiva rodava, o resultado chega obsoleto e é descartado — nunca
+ * pode empurrar para ERRO um ciclo que já seguiu em frente (§18.12: "impedir
+ * transições inconsistentes da máquina de estados").
+ *
+ * O `value` é preservado: uma fotografia não some por causa de um erro
+ * (§18.13/§18.17). O erro é marcado como NÃO recuperável porque o Blob não vai
+ * melhorar em uma nova tentativa — a saída prevista é o próprio usuário
+ * Trocar/Limpar (§05.1.1 item 4), não restart().
+ */
+function applyInitialValueRejected(
+  context: MachineContext,
+  event: Extract<FotografoDeFacesEvent, { type: 'INITIAL_VALUE_REJECTED' }>,
+): MachineContext {
+  if (context.state !== 'FOTOGRAFIA_PRONTA' || context.value !== event.value) {
+    return context
+  }
+  return {
+    ...context,
+    state: 'ERRO',
+    ...CLEARED_CYCLE_FIELDS,
+    errorMessage: event.message ?? 'A fotografia fornecida não contém um rosto identificável.',
+    errorReason: 'INVALID_INITIAL_VALUE',
+    errorRecoverable: false,
+  }
+}
+
 function reduceAguardando(
   context: MachineContext,
   event: FotografoDeFacesEvent,
@@ -256,25 +305,57 @@ function reduceCronometrando(
   event: FotografoDeFacesEvent,
 ): MachineContext {
   if (event.type === 'CANDIDATE_LOST') {
+    // §10.8.1 item 2: perda TOTAL da face não passa pela janela de tolerância —
+    // cancela na hora, sem amortecimento.
     return backToDetectando(context)
   }
   if (event.type === 'QUALITY_CHANGED') {
     if (!event.quality.aprovada) {
-      // §06.5/§07.5: condição perdida durante a contagem cancela o disparo.
-      return backToDetectando(context)
+      // §10.8.1 item 1: a primeira reprovação apenas SUSPENDE a contagem; as
+      // seguintes não reiniciam a janela (senão, a 12fps, ela nunca expiraria —
+      // cada quadro reprovado adiaria o cancelamento indefinidamente). Quem
+      // fecha a janela é GRACE_PERIOD_EXPIRED.
+      if (context.timer?.suspended) return { ...context, quality: event.quality }
+      return {
+        ...context,
+        quality: event.quality,
+        timer: context.timer ? { ...context.timer, suspended: true } : null,
+      }
     }
-    return { ...context, quality: event.quality }
+    // §10.8.1 item 1: critérios reestabelecidos dentro da janela — a contagem
+    // é retomada de onde parou, sem reiniciar do total.
+    return {
+      ...context,
+      quality: event.quality,
+      timer: context.timer?.suspended ? { ...context.timer, suspended: false } : context.timer,
+    }
+  }
+  if (event.type === 'GRACE_PERIOD_EXPIRED') {
+    // A reprovação persistiu além da janela: cancela o disparo, libera o Face
+    // Lock e reinicia a busca (§10.8, §10.8.1 item 1).
+    return context.timer?.suspended ? backToDetectando(context) : context
   }
   if (event.type === 'TIMER_TICK') {
+    // Contagem congelada durante a janela de tolerância: um tick que chegue
+    // aqui não pode consumir tempo nem, muito menos, disparar a captura.
+    if (context.timer?.suspended) return context
+
     const remainingSeconds = Math.max(0, event.remainingSeconds)
     if (remainingSeconds <= 0) {
-      // §06.5: o término do cronômetro só dispara porque a condição seguiu
-      // mantida (qualquer perda já teria saído deste estado antes).
+      // §10.8.1 item 3 (validação final): decide pelo ÚLTIMO resultado de
+      // qualidade já calculado pelo loop contínuo — nunca dispara uma análise
+      // nova aqui, que seria assíncrona e não teria como responder a tempo. Se
+      // esse último resultado reprovou, a captura é cancelada (§06.9, §10.13).
+      if (context.quality && !context.quality.aprovada) return backToDetectando(context)
       return { ...context, state: 'CAPTURANDO', timer: null }
     }
     return {
       ...context,
-      timer: { totalSeconds: context.timer?.totalSeconds ?? remainingSeconds, remainingSeconds },
+      timer: {
+        totalSeconds: context.timer?.totalSeconds ?? remainingSeconds,
+        remainingSeconds,
+        suspended: false,
+      },
     }
   }
   return context
@@ -322,6 +403,8 @@ export function fotografoDeFacesReducer(
       return applyRestart(context)
     case 'CAMERA_ACCESS_FAILED':
       return applyCameraAccessFailed(context, event)
+    case 'INITIAL_VALUE_REJECTED':
+      return applyInitialValueRejected(context, event)
     case 'CAPTURE_REQUESTED':
       // §06.6/§06.9/§11: não existe captura válida fora de PRONTO — fora
       // dele, capture() não faz nada (nunca lança exceção).

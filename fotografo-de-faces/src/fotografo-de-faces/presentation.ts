@@ -6,7 +6,7 @@
  * isoladamente, sem precisar renderizar nada.
  */
 import type { BoundingBox, FrameSize } from './faceMetrics'
-import type { FotografoDeFacesState } from './types'
+import type { FotografoDeFacesMode, FotografoDeFacesState } from './types'
 
 export type FaceFrameColor = 'amarela' | 'verde' | 'azul' | 'vermelha'
 
@@ -77,13 +77,29 @@ export function shouldShowCaptureButton(autoCaptureAfter: number | null, state: 
 }
 
 /**
- * §07.9/§09.6 (F6, quiosque): toda face visível começa amarela; só a
- * candidata travada pelo Face Lock evolui para verde, e só ao alcançar
- * PRONTO/CRONOMETRANDO — as demais faces do quadro continuam amarelas.
+ * §07.9/§09.6/§07.9.1 (quiosque): só a candidata travada pelo Face Lock segue
+ * o mapeamento de cores completo do §07.9 (amarela → verde em
+ * PRONTO/CRONOMETRANDO → azul em FOTOGRAFIA_PRONTA → vermelha em ERRO). As
+ * demais faces do quadro ficam permanentemente amarelas — são detecção
+ * passiva, nunca alvo do ciclo (§09.1).
  */
 export function getVisibleFaceColor(locked: boolean, state: FotografoDeFacesState): FaceFrameColor {
-  if (locked && (state === 'PRONTO' || state === 'CRONOMETRANDO')) return 'verde'
-  return 'amarela'
+  if (!locked) return 'amarela'
+  return getFaceFrameColor(state, true) ?? 'amarela'
+}
+
+/**
+ * §07.9.1 item 1: no quiosque a guia oval fixa é forçada a oculta, qualquer
+ * que seja a prop do hospedeiro.
+ *
+ * O motivo é de coerência cognitiva, não de estética: o enquadramento no
+ * quiosque é dinâmico e flexível (§03.2) — várias pessoas, a qualquer
+ * distância, com a moldura móvel acompanhando quem está travada —, então um
+ * oval fixo no centro passaria ao usuário uma instrução que o componente não
+ * está de fato exigindo.
+ */
+export function shouldShowFramingGuide(showFramingGuide: boolean, mode: FotografoDeFacesMode): boolean {
+  return showFramingGuide && mode !== 'quiosque'
 }
 
 /** Tamanho do contêiner em pixels CSS — o que o vídeo realmente ocupa na tela. */

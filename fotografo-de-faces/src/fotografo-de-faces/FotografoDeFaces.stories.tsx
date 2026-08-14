@@ -268,7 +268,11 @@ const meta = {
     },
     showMessages: { control: 'boolean', description: '§14.1 — mensagens de orientação.' },
     showFaceFrame: { control: 'boolean', description: '§20.4, §07.9 — molduras coloridas por estado.' },
-    showFramingGuide: { control: 'boolean', description: '§02.1 item 4, §20.4 — guia oval de enquadramento.' },
+    showFramingGuide: {
+      control: 'boolean',
+      description:
+        '§02.1 item 4, §20.4 — guia oval de enquadramento. §07.9.1: ignorada no modo quiosque, onde o enquadramento é dinâmico.',
+    },
     modelsUrl: { control: 'text', description: 'Caminho local dos pesos da face-api.js (padrão `/models`).' },
   },
   args: {
@@ -366,10 +370,14 @@ export const CronometroRegressivo: Story = {
 }
 
 /**
- * §04.8, §13.5 — janela de revisão: com a fotografia pronta aparecem [Trocar]
- * e [Limpar]; ao acionar qualquer uma delas, o valor anterior vai para o
- * rollback privado e aparecem [Confirmar] e [Cancelar]. Com `reviewFor: 0` a
- * janela fica aberta indefinidamente, então dá tempo de exercitar o ciclo todo.
+ * §04.8, §04.9, §04.10, §13.5 — janela de revisão: com a fotografia pronta
+ * aparecem [Trocar] e [Limpar]; ao acionar qualquer uma delas, o valor anterior
+ * vai para o rollback privado e o componente volta ao fluxo de captura.
+ * [Confirmar] e [Cancelar] só entram em cena depois que uma NOVA captura for
+ * consolidada — a regra vale igual para Trocar e para Limpar, já que "a
+ * diferença entre as duas ações está apenas na intenção inicial" (§04.10). Com
+ * `reviewFor: 0` a janela fica aberta indefinidamente, então dá tempo de
+ * exercitar o ciclo todo.
  */
 export const JanelaDeRevisao: Story = {
   args: {

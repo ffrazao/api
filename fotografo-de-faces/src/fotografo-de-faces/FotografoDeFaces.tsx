@@ -24,13 +24,22 @@ import {
   getVisibleFaceColor,
   isCaptureButtonEnabled,
   shouldShowCaptureButton,
+  shouldShowFramingGuide,
 } from './presentation'
+import { QUALITY_GRACE_PERIOD_MS } from './machine'
 import { useCameraStream } from './useCameraStream'
 import { useFaceDetection } from './useFaceDetection'
 import { useFotografoDeFacesMachine } from './useFotografoDeFacesMachine'
+import { useInitialValueValidation } from './useInitialValueValidation'
 import { useReviewWindow } from './useReviewWindow'
 import { capturePhotoBlob } from './imageProcessor'
-import type { FotografiaValue, FotografoDeFacesMode, FotografoDeFacesSnapshot, Quality, TimerState } from './types'
+import type {
+  FotografiaValue,
+  FotografoDeFacesMode,
+  FotografoDeFacesPublicSnapshot,
+  Quality,
+  TimerState,
+} from './types'
 
 export interface FotografoDeFacesProps {
   value: FotografiaValue
@@ -62,8 +71,16 @@ export interface FotografoDeFacesHandle {
   restart: () => void
   /** §16.4 — liga/desliga a apresentação em tela cheia via API nativa do navegador. */
   setFullscreen: (active: boolean) => void
-  /** §16.5 — retrato consolidado do estado atual. */
-  getState: () => FotografoDeFacesSnapshot
+  /** §16.5 — retrato consolidado do estado atual, incluindo `rollbackValue`. */
+  getState: () => FotografoDeFacesPublicSnapshot
+  /**
+   * §16.5 (emenda v1.1) — `value_rollback` em leitura estrita, para a
+   * aplicação montar comparações do tipo "Foto Anterior" × "Nova Captura"
+   * durante a janela de revisão. Não existe caminho de escrita: o ciclo de
+   * vida do rollback segue exclusivamente sob o controle interno do
+   * componente (§20.7).
+   */
+  getRollbackValue: () => FotografiaValue
   /** §16.6 — exatamente o `value` atual (nunca um conceito de "confirmado"). */
   getValue: () => FotografiaValue
   /** §16.7 — mensagem de orientação atual. */
@@ -143,6 +160,12 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
     modelsUrl,
   })
 
+  // §05.1.1 — passagem passiva de detecção sobre a fotografia que a aplicação
+  // forneceu na montagem. Roda em segundo plano: a imagem já está sendo
+  // apresentada, e só um resultado sem exatamente uma face leva a ERRO com o
+  // código INVALID_INITIAL_VALUE.
+  useInitialValueValidation({ value, dispatch, modelsUrl })
+
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = stream
   }, [stream])
@@ -197,15 +220,35 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
   // nunca capturar. Contra o prazo, uma travada só faz a contagem pular direto
   // para o valor certo (inclusive para 0, disparando a captura na hora).
   const countdownDeadlineRef = useRef<number | null>(null)
+  /** §10.8.1 — instante em que a contagem congelou; null quando ela está correndo. */
+  const suspendedAtRef = useRef<number | null>(null)
   useEffect(() => {
     if (snapshot.state !== 'CRONOMETRANDO' || !snapshot.timer) {
       // Sair de CRONOMETRANDO encerra o prazo: a próxima contagem (§06.5 —
       // condição perdida e recuperada) começa inteira, do zero.
       countdownDeadlineRef.current = null
+      suspendedAtRef.current = null
       return
     }
 
-    const { remainingSeconds } = snapshot.timer
+    const { remainingSeconds, suspended } = snapshot.timer
+
+    if (suspended) {
+      // §10.8.1 item 1: "mantendo a contagem visual congelada". Nenhum tick é
+      // agendado aqui — e como a contagem é derivada de um PRAZO em tempo real,
+      // congelar de verdade exige lembrar QUANDO ela parou, para devolver ao
+      // prazo o tempo gasto na janela de tolerância. Sem isso, o congelamento
+      // seria só visual: o prazo seguiria correndo por baixo e a captura
+      // dispararia adiantada assim que a qualidade voltasse.
+      suspendedAtRef.current ??= Date.now()
+      return
+    }
+
+    if (suspendedAtRef.current !== null && countdownDeadlineRef.current !== null) {
+      countdownDeadlineRef.current += Date.now() - suspendedAtRef.current
+    }
+    suspendedAtRef.current = null
+
     const deadline = countdownDeadlineRef.current ?? Date.now() + remainingSeconds * 1000
     countdownDeadlineRef.current = deadline
 
@@ -219,6 +262,22 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
     )
     return () => clearTimeout(timeoutId)
   }, [snapshot.state, snapshot.timer, dispatch])
+
+  // §10.8.1 — janela de tolerância: enquanto a contagem estiver congelada, dá
+  // até 300ms para os critérios voltarem. Se voltarem, o reducer tira o
+  // `suspended` e este efeito é desmontado com o timeout junto; se não
+  // voltarem, GRACE_PERIOD_EXPIRED cancela o disparo.
+  //
+  // A dependência é o booleano, não o objeto `timer`: durante a suspensão o
+  // loop de detecção continua despachando QUALITY_CHANGED a ~12fps, e reagir à
+  // identidade do objeto reiniciaria a janela a cada quadro reprovado — ela
+  // nunca expiraria.
+  const timerSuspended = snapshot.state === 'CRONOMETRANDO' && snapshot.timer?.suspended === true
+  useEffect(() => {
+    if (!timerSuspended) return
+    const timeoutId = setTimeout(() => dispatch({ type: 'GRACE_PERIOD_EXPIRED' }), QUALITY_GRACE_PERIOD_MS)
+    return () => clearTimeout(timeoutId)
+  }, [timerSuspended, dispatch])
 
   // F9 (§12, §17, §18.6-§18.17) — efetiva a captura ao entrar em CAPTURANDO:
   // recorta com margem de contexto a partir do <video> ao vivo (nunca de uma
@@ -286,6 +345,17 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
+  // §16.5 (emenda v1.1): o snapshot público é o da máquina MAIS o rollback, que
+  // vive no componente e não no reducer (§20.7). A cópia é feita aqui, e não
+  // dentro de useReviewWindow/machine, justamente para o rollback continuar sem
+  // nenhum caminho de escrita: o que sai por getState() é uma leitura do estado
+  // atual, nunca uma alça para modificá-lo.
+  const { rollbackValue } = reviewWindow
+  const getPublicState = useCallback(
+    (): FotografoDeFacesPublicSnapshot => ({ ...getState(), rollbackValue }),
+    [getState, rollbackValue],
+  )
+
   // §16.1: a API imperativa só encaminha para as mesmas funções que já
   // governam o componente por dentro — nunca um caminho paralelo (§16.11).
   useImperativeHandle(
@@ -294,13 +364,14 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
       capture,
       restart,
       setFullscreen,
-      getState,
+      getState: getPublicState,
       getValue,
+      getRollbackValue: () => rollbackValue,
       getMessage: () => getState().message,
       getQuality: () => getState().quality,
       getTimer: () => getState().timer,
     }),
-    [capture, restart, setFullscreen, getState, getValue],
+    [capture, restart, setFullscreen, getState, getPublicState, getValue, rollbackValue],
   )
 
   const frameColor = getFaceFrameColor(snapshot.state, snapshot.candidate !== null)
@@ -314,6 +385,9 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
   const displaySize = useDisplaySize(videoRef)
   const showButton = shouldShowCaptureButton(autoCaptureAfter, snapshot.state)
   const buttonEnabled = isCaptureButtonEnabled(snapshot.state)
+  // §07.9.1 item 1: no quiosque a guia oval fica oculta mesmo que a aplicação
+  // hospedeira peça o contrário.
+  const exibirGuiaDeEnquadramento = shouldShowFramingGuide(showFramingGuide, mode)
 
   return (
     <S.Root ref={rootRef} data-testid="fotografo-de-faces" data-state={snapshot.state}>
@@ -328,7 +402,7 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
         />
 
         <S.OverlayLayer>
-          {showFramingGuide && <S.FramingGuideOval data-testid="framing-guide" />}
+          {exibirGuiaDeEnquadramento && <S.FramingGuideOval data-testid="framing-guide" />}
 
           {showFaceFrame &&
             (showMultiFaceFrames ? (
@@ -341,6 +415,9 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
                     data-color={color}
                     data-locked={face.locked}
                     $color={FACE_FRAME_HEX[color]}
+                    // §07.9.1 item 2: só a travada é moldura de status; as
+                    // demais ficam finas e discretas (detecção passiva).
+                    $thin={!face.locked}
                     style={boxToPercentagePosition(face.box, videoFrameSize, displaySize)}
                   />
                 )
@@ -399,6 +476,17 @@ function FotografoDeFacesImpl(props: FotografoDeFacesProps, ref: ForwardedRef<Fo
             </S.ReviewButton>
             <S.ReviewButton type="button" tabIndex={0} data-testid="limpar-button" onClick={reviewWindow.limpar}>
               Limpar
+            </S.ReviewButton>
+          </S.ReviewActions>
+        )}
+
+        {/* §18.13/§18.17 — um erro no meio de uma troca não pode custar a
+            fotografia anterior: enquanto o rollback existir, Cancelar continua
+            ao alcance do usuário para restaurá-la. */}
+        {reviewWindow.phase === 'recuperar' && (
+          <S.ReviewActions data-testid="review-actions">
+            <S.ReviewButton type="button" tabIndex={0} data-testid="cancelar-button" onClick={reviewWindow.cancelar}>
+              Cancelar
             </S.ReviewButton>
           </S.ReviewActions>
         )}

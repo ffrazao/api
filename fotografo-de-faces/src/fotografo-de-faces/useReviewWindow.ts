@@ -12,7 +12,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FotografiaValue, FotografoDeFacesState } from './types'
 
-export type ReviewPhase = 'nenhuma' | 'trocar-ou-limpar' | 'confirmar-ou-cancelar'
+/**
+ * `recuperar` existe por causa de §18.13/§18.17: se um ERRO acontecer com uma
+ * operação de revisão em andamento, o `value_rollback` guarda a única cópia da
+ * fotografia que já estava confirmada. Sem uma saída explícita ali, essa
+ * fotografia se perderia em silêncio por causa de um erro — que é justamente o
+ * que a especificação proíbe. A fase oferece só Cancelar (restaurar): não é o
+ * par de decisão do §04.11-§04.12, é uma saída de recuperação.
+ */
+export type ReviewPhase = 'nenhuma' | 'trocar-ou-limpar' | 'confirmar-ou-cancelar' | 'recuperar'
 
 export interface UseReviewWindowOptions {
   value: FotografiaValue
@@ -28,6 +36,13 @@ export interface UseReviewWindowResult {
   limpar: () => void
   confirmar: () => void
   cancelar: () => void
+  /**
+   * §16.5 (emenda v1.1): `value_rollback` para LEITURA. Continua sem qualquer
+   * caminho de escrita — não existe setter aqui nem prop de entrada que o
+   * alcance; o ciclo de vida dele segue exclusivamente nas mãos deste hook
+   * (§20.7).
+   */
+  rollbackValue: FotografiaValue
 }
 
 export function useReviewWindow(options: UseReviewWindowOptions): UseReviewWindowResult {
@@ -43,14 +58,46 @@ export function useReviewWindow(options: UseReviewWindowOptions): UseReviewWindo
   const [awaitingCancelEcho, setAwaitingCancelEcho] = useState(false)
   const isReviewing = rollback !== null
 
-  const phase: ReviewPhase =
-    reviewFor === null
-      ? 'nenhuma'
-      : isReviewing
-        ? 'confirmar-ou-cancelar'
-        : state === 'FOTOGRAFIA_PRONTA'
-          ? 'trocar-ou-limpar'
-          : 'nenhuma'
+  /**
+   * §04.9/§04.10/§20.7: a operação de revisão só chega ao ponto de decisão
+   * DEPOIS que uma nova captura foi consolidada — os três diagramas da
+   * especificação colocam [Confirmar]/[Cancelar] sempre abaixo de "nova
+   * captura", e §04.10 é explícito em que a diferença entre Trocar e Limpar
+   * "está apenas na intenção inicial". Antes disso não há o que confirmar nem
+   * o que cancelar: `value` ainda é o mesmo valor que foi para o rollback (a
+   * aplicação ainda não ecoou o onChange(null)) ou já é null (ecoou, e o
+   * componente voltou ao fluxo de captura).
+   *
+   * `value !== rollback` é o que separa "nova captura consolidada" de "acabei
+   * de guardar o rollback e a aplicação ainda não ecoou": nesse instante
+   * `value` é, por definição, o próprio rollback.
+   */
+  const novaCapturaConsolidada = isReviewing && state === 'FOTOGRAFIA_PRONTA' && value !== null && value !== rollback
+
+  /**
+   * §05.1.1 item 4: em ERRO com uma fotografia em mãos (o caso típico é o
+   * `INVALID_INITIAL_VALUE`), Trocar/Limpar são justamente o caminho de saída
+   * previsto — é por eles que o usuário inicia um ciclo de câmera para
+   * substituir a imagem reprovada.
+   */
+  const exibindoFotografia = value !== null && (state === 'FOTOGRAFIA_PRONTA' || state === 'ERRO')
+
+  function derivarFase(): ReviewPhase {
+    if (reviewFor === null) return 'nenhuma'
+
+    if (isReviewing) {
+      // Note que uma operação em andamento NUNCA reoferece Trocar/Limpar: um
+      // segundo clique sobrescreveria o `value_rollback` e destruiria a
+      // fotografia que ainda pode ser restaurada por Cancelar (§18.13).
+      if (novaCapturaConsolidada) return 'confirmar-ou-cancelar'
+      if (state === 'ERRO') return 'recuperar'
+      return 'nenhuma'
+    }
+
+    return exibindoFotografia ? 'trocar-ou-limpar' : 'nenhuma'
+  }
+
+  const phase: ReviewPhase = derivarFase()
 
   const startReview = useCallback(() => {
     // §04.9/§04.10: guarda o valor atual antes de propor null, e só propõe —
@@ -90,14 +137,15 @@ export function useReviewWindow(options: UseReviewWindowOptions): UseReviewWindo
   }, [awaitingCancelEcho, value, rollback])
 
   // §04.8/§4.15: com reviewFor > 0, a janela expira e prevalece a confirmação
-  // automaticamente — mas só conta o tempo havendo de fato uma foto exibida.
+  // automaticamente — mas só conta o tempo enquanto a decisão estiver de fato
+  // à mão do usuário, que agora é exatamente a fase 'confirmar-ou-cancelar'
+  // (ela já exige uma nova captura consolidada em tela).
   useEffect(() => {
     if (phase !== 'confirmar-ou-cancelar') return
     if (!reviewFor) return
-    if (value === null) return
     const timeoutId = setTimeout(() => setRollback(null), reviewFor)
     return () => clearTimeout(timeoutId)
-  }, [phase, reviewFor, value])
+  }, [phase, reviewFor])
 
-  return { phase, trocar, limpar, confirmar, cancelar }
+  return { phase, trocar, limpar, confirmar, cancelar, rollbackValue: rollback }
 }

@@ -30,6 +30,7 @@ function buildSnapshot(overrides: Partial<FotografoDeFacesSnapshot> = {}): Fotog
     timer: null,
     candidate: null,
     mode: 'autorretrato',
+    errorCode: null,
     ...overrides,
   }
 }

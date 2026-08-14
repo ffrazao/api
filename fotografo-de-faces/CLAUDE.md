@@ -30,3 +30,5 @@ CAPTURANDO → FOTOGRAFIA_PRONTA | ERRO
 - Editor de preferência do desenvolvedor: Sublime Text (`subl`).
 - Um commit por fase concluída (ou por bloco de configuração fechado), mensagem no formato `feat(fN): descrição`. Evitar commits fragmentados por ajuste isolado dentro da mesma fase.
 - Testes da máquina de estados (Vitest) não dependem de câmera real — sempre mockar.
+- Responder sempre em português nesta conversa e neste projeto.
+- `docs/especificacao-formal.md` é só para leitura durante tarefas de implementação. Atualizações nele (ex.: o "Registro de Divergências") são tarefa própria e explícita, nunca um efeito colateral de uma fase de código.

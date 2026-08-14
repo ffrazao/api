@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   boxToPercentagePosition,
   getFaceFrameColor,
+  getVisibleFaceColor,
   isCaptureButtonEnabled,
   shouldShowCaptureButton,
+  shouldShowFramingGuide,
 } from './presentation'
-import type { FotografoDeFacesState } from './types'
+import type { FotografoDeFacesMode, FotografoDeFacesState } from './types'
 
 describe('getFaceFrameColor (§07.9, §14.11)', () => {
   it('não exibe moldura em AGUARDANDO (nenhuma face)', () => {
@@ -197,5 +199,44 @@ describe('boxToPercentagePosition (§07.9, §09.6 — mapeamento de object-fit: 
 
     expect(boxToPercentagePosition(CAIXA, { width: 0, height: 0 }, { width: 640, height: 480 })).toEqual(vazio)
     expect(boxToPercentagePosition(CAIXA, VIDEO, { width: 0, height: 0 })).toEqual(vazio)
+  })
+})
+
+describe('shouldShowFramingGuide (§07.9.1 item 1, emenda v1.1)', () => {
+  const outrosModos: FotografoDeFacesMode[] = ['autorretrato', 'assistido']
+
+  it.each(outrosModos)('%s — respeita a propriedade do hospedeiro', (mode) => {
+    expect(shouldShowFramingGuide(true, mode)).toBe(true)
+    expect(shouldShowFramingGuide(false, mode)).toBe(false)
+  })
+
+  it('quiosque — força a guia oval a oculta mesmo com showFramingGuide=true', () => {
+    expect(shouldShowFramingGuide(true, 'quiosque')).toBe(false)
+    expect(shouldShowFramingGuide(false, 'quiosque')).toBe(false)
+  })
+})
+
+describe('getVisibleFaceColor (§07.9.1 itens 2 e 3, emenda v1.1)', () => {
+  const estados: FotografoDeFacesState[] = [
+    'AGUARDANDO',
+    'DETECTANDO',
+    'AVALIANDO',
+    'PRONTO',
+    'CRONOMETRANDO',
+    'CAPTURANDO',
+    'FOTOGRAFIA_PRONTA',
+    'ERRO',
+  ]
+
+  it.each(estados)('%s — face não travada fica sempre amarela (detecção passiva, §09.1)', (state) => {
+    expect(getVisibleFaceColor(false, state)).toBe('amarela')
+  })
+
+  it('a candidata travada preserva o mapeamento de cores do §07.9', () => {
+    expect(getVisibleFaceColor(true, 'AVALIANDO')).toBe('amarela')
+    expect(getVisibleFaceColor(true, 'PRONTO')).toBe('verde')
+    expect(getVisibleFaceColor(true, 'CRONOMETRANDO')).toBe('verde')
+    expect(getVisibleFaceColor(true, 'FOTOGRAFIA_PRONTA')).toBe('azul')
+    expect(getVisibleFaceColor(true, 'ERRO')).toBe('vermelha')
   })
 })

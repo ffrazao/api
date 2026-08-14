@@ -135,7 +135,7 @@ export function MinhaTela() {
 | `reviewFor` | `number \| null` | `null` | Janela de revisão: `null` desliga; `0` fica aberta; `> 0` expira em ms. |
 | `showMessages` | `boolean` | `false` | Exibe as mensagens de orientação. |
 | `showFaceFrame` | `boolean` | `false` | Exibe as molduras coloridas por estado. |
-| `showFramingGuide` | `boolean` | `false` | Exibe a guia oval de enquadramento. |
+| `showFramingGuide` | `boolean` | `false` | Exibe a guia oval de enquadramento. Ignorada no modo `quiosque` (§07.9.1). |
 | `modelsUrl` | `string` | `'/models'` | Caminho local dos pesos da `face-api.js`. |
 
 O componente nunca aceita `width`/`height`/`cameraWidth`/`cameraHeight`: ele se
@@ -144,9 +144,29 @@ adapta ao contêiner do hospedeiro.
 ### API imperativa (`ref`)
 
 `capture()`, `restart()`, `setFullscreen(ativo)`, `getState()`, `getValue()`,
-`getMessage()`, `getQuality()` e `getTimer()`. A API só solicita ações e
-consulta estado — não existe forma de forçar uma transição ou capturar fora do
-estado `PRONTO`.
+`getRollbackValue()`, `getMessage()`, `getQuality()` e `getTimer()`. A API só
+solicita ações e consulta estado — não existe forma de forçar uma transição ou
+capturar fora do estado `PRONTO`.
+
+`getState()` devolve `{ state, message, value, quality, timer, candidate, mode,
+errorCode, rollbackValue }`. O `errorCode` identifica o motivo de um `ERRO` sem
+depender da mensagem em português — inclusive `'INVALID_INITIAL_VALUE'`, usado
+quando a fotografia fornecida na montagem não contém exatamente um rosto
+identificável (§05.1.1). O `rollbackValue` (também disponível por
+`getRollbackValue()`) é a fotografia anterior preservada durante uma operação
+de revisão, útil para montar uma comparação "Foto Anterior" × "Nova Captura".
+Ele é **estritamente somente-leitura**: não existe propriedade nem método que
+escreva nele.
+
+### Fluxo de revisão
+
+Com `reviewFor` ativo e uma fotografia em tela, aparecem **[Trocar]** e
+**[Limpar]**. Qualquer uma das duas preserva a fotografia atual no rollback
+interno e propõe `onChange(null)`, devolvendo o componente ao ciclo de captura.
+**[Confirmar]** e **[Cancelar]** só aparecem depois que uma nova fotografia for
+capturada — é aí que existe, de fato, uma alteração a aceitar ou descartar
+(§04.9, §04.10, §20.7). A diferença entre Trocar e Limpar está apenas na
+intenção inicial do usuário.
 
 ## Limitações conhecidas
 
