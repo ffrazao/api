@@ -1,4 +1,4 @@
-java openjdk-21.0.2
+java openjdk-21
 nodejs 26.0.0
 gradle 8.12.1
-python 3.10.16
+python 3.11
